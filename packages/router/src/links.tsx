@@ -1,6 +1,8 @@
 import { forwardRef, useEffect } from 'react'
 
-import { navigate, matchPath, useLocation } from './internal'
+import { navigate } from '@redwoodjs/history'
+
+import { matchPath, useLocation } from './internal'
 
 /**
  * Returns true if the URL for the given "route" value matches the current URL.
@@ -23,7 +25,7 @@ interface LinkProps {
 const Link = forwardRef<
   HTMLAnchorElement,
   LinkProps & React.AnchorHTMLAttributes<HTMLAnchorElement>
->(({ to, ...rest }, ref) => (
+>(({ to, onClick, ...rest }, ref) => (
   <a
     href={to}
     ref={ref}
@@ -40,7 +42,15 @@ const Link = forwardRef<
       }
 
       event.preventDefault()
-      navigate(to)
+
+      if (onClick) {
+        const result = onClick(event)
+        if (typeof result !== 'boolean' || result) {
+          navigate(to)
+        }
+      } else {
+        navigate(to)
+      }
     }}
   />
 ))
@@ -53,7 +63,7 @@ interface NavLinkProps {
 const NavLink = forwardRef<
   HTMLAnchorElement,
   NavLinkProps & React.AnchorHTMLAttributes<HTMLAnchorElement>
->(({ to, activeClassName, className, ...rest }, ref) => {
+>(({ to, activeClassName, className, onClick, ...rest }, ref) => {
   const matchInfo = useMatch(to)
   const theClassName = [className, matchInfo.match && activeClassName]
     .filter(Boolean)
@@ -77,7 +87,15 @@ const NavLink = forwardRef<
         }
 
         event.preventDefault()
-        navigate(to)
+
+        if (onClick) {
+          const result = onClick(event)
+          if (typeof result !== 'boolean' || result) {
+            navigate(to)
+          }
+        } else {
+          navigate(to)
+        }
       }}
     />
   )

@@ -5,7 +5,6 @@
 export {
   Router,
   Route,
-  Private,
   Link,
   NavLink,
   useMatch,
@@ -14,7 +13,6 @@ export {
   useParams,
   useLocation,
   LocationProvider,
-  navigate,
   PageLoadingContext,
 } from './internal'
 
@@ -45,3 +43,5 @@ export interface AvailableRoutes {
 }
 
 export { SkipNavLink, SkipNavContent } from '@reach/skip-nav'
+
+export { navigate, back, NavigateOptions } from '@redwoodjs/history'

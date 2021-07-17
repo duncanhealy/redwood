@@ -15,7 +15,7 @@ afterEach(() => {
 const extensionForBaseArgs = (baseArgs) =>
   baseArgs && baseArgs.typescript ? 'ts' : 'js'
 
-const itReturnsExactlyThreeFiles = (baseArgs = {}) => {
+const itReturnsExactlyFourFiles = (baseArgs = {}) => {
   test('returns exactly 4 files', async () => {
     const files = await sdl.files({ ...baseArgs, name: 'Post', crud: false })
 
@@ -111,7 +111,7 @@ const itCreateAMultiWordSDLFileWithCRUD = (baseArgs = {}) => {
   })
 }
 
-const itCreatesASDLFileWithEnumDefinitions = (baseArgs = {}) => {
+const itCreatesAnSDLFileWithEnumDefinitions = (baseArgs = {}) => {
   test('creates a sdl file with enum definitions', async () => {
     const files = await sdl.files({ ...baseArgs, name: 'Shoe', crud: true })
     const extension = extensionForBaseArgs(baseArgs)
@@ -126,7 +126,7 @@ const itCreatesASDLFileWithEnumDefinitions = (baseArgs = {}) => {
   })
 }
 
-const itCreatesASDLFileWithJsonDefinitions = (baseArgs = {}) => {
+const itCreatesAnSDLFileWithJsonDefinitions = (baseArgs = {}) => {
   test('creates a sdl file with json definitions', async () => {
     const files = await sdl.files({ ...baseArgs, name: 'Photo', crud: true })
     const extension = extensionForBaseArgs(baseArgs)
@@ -142,27 +142,31 @@ const itCreatesASDLFileWithJsonDefinitions = (baseArgs = {}) => {
 }
 
 describe('in javascript mode', () => {
-  const baseArgs = getDefaultArgs(sdl.defaults)
+  const baseArgs = { ...getDefaultArgs(sdl.defaults), tests: true }
 
-  itReturnsExactlyThreeFiles(baseArgs)
+  itReturnsExactlyFourFiles(baseArgs)
   itCreatesAService(baseArgs)
   itCreatesASingleWordSDLFile(baseArgs)
   itCreatesAMultiWordSDLFile(baseArgs)
   itCreatesASingleWordSDLFileWithCRUD(baseArgs)
   itCreateAMultiWordSDLFileWithCRUD(baseArgs)
-  itCreatesASDLFileWithEnumDefinitions(baseArgs)
-  itCreatesASDLFileWithJsonDefinitions(baseArgs)
+  itCreatesAnSDLFileWithEnumDefinitions(baseArgs)
+  itCreatesAnSDLFileWithJsonDefinitions(baseArgs)
 })
 
 describe('in typescript mode', () => {
-  const baseArgs = { ...getDefaultArgs(sdl.defaults), typescript: true }
+  const baseArgs = {
+    ...getDefaultArgs(sdl.defaults),
+    typescript: true,
+    tests: true,
+  }
 
-  itReturnsExactlyThreeFiles(baseArgs)
+  itReturnsExactlyFourFiles(baseArgs)
   itCreatesAService(baseArgs)
   itCreatesASingleWordSDLFile(baseArgs)
   itCreatesAMultiWordSDLFile(baseArgs)
   itCreatesASingleWordSDLFileWithCRUD(baseArgs)
   itCreateAMultiWordSDLFileWithCRUD(baseArgs)
-  itCreatesASDLFileWithEnumDefinitions(baseArgs)
-  itCreatesASDLFileWithJsonDefinitions(baseArgs)
+  itCreatesAnSDLFileWithEnumDefinitions(baseArgs)
+  itCreatesAnSDLFileWithJsonDefinitions(baseArgs)
 })

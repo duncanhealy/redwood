@@ -7,13 +7,14 @@
     "outDir": "dist",
     "paths": {
       "src/*": ["./src/*"],
-    }
+    },
   },
   "include": [
-    "src"
+    "src",
   ],
   "references": [
     { "path": "../router" },
+    { "path": "../history" },
     { "path": "../internal" },
     { "path": "../web" },
     { "path": "../auth" },
