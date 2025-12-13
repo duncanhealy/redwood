@@ -1,85 +1,93 @@
-jest.mock('execa', () => jest.fn((cmd) => cmd))
-
-let mockedRedwoodConfig = {
-  api: {},
-  web: {},
-  browser: {},
-}
-
-jest.mock('src/lib', () => {
+vi.mock('@redwoodjs/project-config', async (importOriginal) => {
+  const originalProjectConfig = await importOriginal()
   return {
-    ...jest.requireActual('src/lib'),
-    runCommandTask: jest.fn((commands) => {
-      return commands.map(({ cmd, args }) => `${cmd} ${args?.join(' ')}`)
-    }),
-    getPaths: () => ({
-      base: './',
-      api: {
-        dbSchema: '../../__fixtures__/example-todo-main/api/prisma',
-      },
-      web: {},
-    }),
+    ...originalProjectConfig,
+    getPaths: () => {
+      return {
+        api: {
+          dist: '/mocked/project/api/dist',
+          dbSchema: '/mocked/project/api/db/schema.prisma',
+        },
+        web: {
+          dist: '/mocked/project/web/dist',
+          routes: '/mocked/project/web/Routes.tsx',
+        },
+      }
+    },
     getConfig: () => {
-      return mockedRedwoodConfig
+      return {
+        // The build command needs nothing in this config as all
+        // the values it currently reads are optional.
+      }
     },
   }
 })
 
-// let mockDetectPrerenderRoutes = jest.fn(() => [])
-let mockedPrerenderRoutes = ['Pretend', 'Some', 'Routes', 'Are', 'There']
-// For the prerender tests
-jest.mock('@redwoodjs/prerender', () => {
-  return { detectPrerenderRoutes: () => mockedPrerenderRoutes }
+vi.mock('fs-extra', async () => {
+  const actualFs = await vi.importActual('fs-extra')
+  return {
+    default: {
+      ...actualFs,
+      // Mock the existence of the Prisma schema file
+      existsSync: (path) => {
+        if (path === '/mocked/project/api/db/schema.prisma') {
+          return true
+        }
+        return actualFs.existsSync(path)
+      },
+    },
+  }
 })
 
-import execa from 'execa'
+import { Listr } from 'listr2'
+import { vi, afterEach, test, expect } from 'vitest'
 
-import { runCommandTask } from 'src/lib'
+vi.mock('listr2')
+
+// Make sure prerender doesn't get triggered
+vi.mock('execa', () => ({
+  default: vi.fn((cmd, params) => ({
+    cmd,
+    params,
+  })),
+}))
 
 import { handler } from '../build'
 
 afterEach(() => {
-  jest.clearAllMocks()
+  vi.clearAllMocks()
 })
 
-test('Should clean web dist directory, before build', async () => {
+test('the build tasks are in the correct sequence', async () => {
   await handler({})
-  expect(execa.mock.results[0].value).toEqual(`rimraf dist/*`)
+  expect(Listr.mock.calls[0][0].map((x) => x.title)).toMatchInlineSnapshot(`
+    [
+      "Generating Prisma Client...",
+      "Verifying graphql schema...",
+      "Building API...",
+      "Building Web...",
+    ]
+  `)
 })
 
-test('The build command runs the correct commands.', async () => {
-  await handler({})
-
-  // Prisma command is inserted differently
-  expect(runCommandTask.mock.results[0].value[0]).toEqual(
-    'yarn prisma generate --schema="../../__fixtures__/example-todo-main/api/prisma"'
-  )
-
-  expect(execa.mock.results[1].value).toEqual(
-    `yarn cross-env NODE_ENV=production babel src --out-dir dist --delete-dir-on-start --extensions .ts,.js --ignore '**/*.test.ts,**/*.test.js,**/__tests__'`
-  )
-
-  expect(execa.mock.results[2].value).toEqual(
-    `yarn cross-env NODE_ENV=production webpack --config ../node_modules/@redwoodjs/core/config/webpack.production.js`
-  )
+vi.mock('@redwoodjs/prerender/detection', () => {
+  return { detectPrerenderRoutes: () => [] }
 })
 
-test('Should run prerender for web, after build', async () => {
-  // Prerender is true by default
+test('Should run prerender for web', async () => {
+  const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
   await handler({ side: ['web'], prerender: true })
+  expect(Listr.mock.calls[0][0].map((x) => x.title)).toMatchInlineSnapshot(`
+    [
+      "Building Web...",
+    ]
+  `)
 
-  expect(execa.mock.results[1].value).toEqual(
-    'yarn cross-env NODE_ENV=production webpack --config ../node_modules/@redwoodjs/core/config/webpack.production.js'
+  // Run prerendering task, but expect warning,
+  // because `detectPrerenderRoutes` is empty.
+  expect(consoleSpy.mock.calls[0][0]).toBe('Starting prerendering...')
+  expect(consoleSpy.mock.calls[1][0]).toMatch(
+    /You have not marked any routes to "prerender"/,
   )
-
-  expect(execa.mock.results[2].value).toEqual('yarn rw prerender')
-})
-
-test('Should skip prerender if no prerender routes detected', async () => {
-  mockedPrerenderRoutes = []
-
-  // Prerender is true by default
-  await handler({ side: ['web'], prerender: true })
-
-  expect(execa.mock.results[2]).toBeFalsy()
 })

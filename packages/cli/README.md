@@ -1,36 +1,36 @@
-# Command Line Interface
+# RedwoodJS CLI
 
   <!-- toc -->
-  - [Purpose and Vision](#purpose-and-vision)
-  - [Package Leads](#package-leads)
-  - [Roadmap](#roadmap)
-    - [Coming Soon](#coming-soon)
-    - [Coming Later](#coming-later)
-  - [Contributing](#contributing)
-    - [Overview](#overview)
-    - [Best Practices](#best-practices)
-    - [Adding a Command](#adding-a-command)
-      - [command](#command)
-      - [description](#description)
-      - [builder](#builder)
-      - [handler](#handler)
-    - [Adding an Entry Point Command](#adding-an-entry-point-command)
-    - [Adding a Generator](#adding-a-generator)
-      - [createYargsForComponentGeneration](#createyargsforcomponentgeneration)
-      - [yargsDefaults](#yargsdefaults)
-      - [Testing Generators](#testing-generators)
-      - [Adding a Destroyer](#adding-a-destroyer)
-    - [Adding a Provider to the Auth Generator](#adding-a-provider-to-the-auth-generator)
-    - [dbCommands](#dbcommands)
-    - [redwood-tools](#redwood-tools)
-    - [Converting to TypeScript](#converting-to-typescript)
-      - [Generators](#generators)
-    - [What about...](#what-about)
-      - [index.js](#indexjs)
-      - [src/lib/colors.js](#srclibcolorsjs)
-  - [FAQ](#faq)
-    - [I want to alias `yarn rw`](#i-want-to-alias-yarn-rw)
-    - [Can I customize the generators?](#can-i-customize-the-generators)
+
+- [Purpose and Vision](#purpose-and-vision)
+- [Package Leads](#package-leads)
+- [Roadmap](#roadmap)
+  - [Coming Soon](#coming-soon)
+  - [Coming Later](#coming-later)
+- [Contributing](#contributing)
+  - [Overview](#overview)
+  - [Best Practices](#best-practices)
+  - [Adding a Command](#adding-a-command)
+    - [command](#command)
+    - [description](#description)
+    - [builder](#builder)
+    - [handler](#handler)
+  - [Adding an Entry Point Command](#adding-an-entry-point-command)
+  - [Adding a Generator](#adding-a-generator)
+    - [createYargsForComponentGeneration](#createyargsforcomponentgeneration)
+    - [yargsDefaults](#yargsdefaults)
+    - [Testing Generators](#testing-generators)
+    - [Adding a Destroyer](#adding-a-destroyer)
+  - [Adding a Provider to the Auth Generator](#adding-a-provider-to-the-auth-generator)
+  - [dbCommands](#dbcommands)
+  - [Converting to TypeScript](#converting-to-typescript)
+    - [Generators](#generators)
+  - [What about...](#what-about)
+    - [index.js](#indexjs)
+    - [src/lib/colors.js](#srclibcolorsjs)
+- [FAQ](#faq)
+  - [I want to alias `yarn rw`](#i-want-to-alias-yarn-rw)
+  - [Can I customize the generators?](#can-i-customize-the-generators)
 
 ## Purpose and Vision
 
@@ -50,13 +50,11 @@ Since the CLI is the entry point to Redwood, as Redwood continues to grow&mdash;
 
 ### Coming Soon
 
-- [Typescript support](https://github.com/redwoodjs/redwood/issues/523)
 - [Generators refactor (plopjs)](https://github.com/redwoodjs/redwood/issues/653)
 
 ### Coming Later
 
 - [Multiple database support](https://github.com/redwoodjs/redwood/issues/507)
-- [Storybook generators](https://github.com/redwoodjs/redwood/issues/231)
 - [Support for dynamic sides and targets](https://github.com/redwoodjs/redwood/pull/355)
 
 ## Contributing
@@ -72,15 +70,14 @@ yargs
     function (yargs) {
       return yargs.option('u', {
         alias: 'url',
-        describe: 'the URL to make an HTTP request to'
+        describe: 'the URL to make an HTTP request to',
       })
     },
     function (argv) {
       console.log(argv.url)
-    }
+    },
   )
-  .help()
-  .argv
+  .help().argv
 ```
 
 you'll see the arguments to the `command` method spread across exported constants, like:
@@ -91,7 +88,7 @@ export const description = 'make a get HTTP request'
 export const builder = (yargs) => {
   return yargs.option('u', {
     alias: 'url',
-    describe: 'the URL to make an HTTP request to'
+    describe: 'the URL to make an HTTP request to',
   })
 }
 export const handler = (argv) => {
@@ -99,11 +96,24 @@ export const handler = (argv) => {
 }
 ```
 
-To get a good sense of the difference, compare [redwood-tools.js](https://github.com/redwoodjs/redwood/blob/d51ade08118c17459cebcdb496197ea52485364a/packages/cli/src/redwood-tools.js#L79-L167) to [dev.js](https://github.com/redwoodjs/redwood/blob/d51ade08118c17459cebcdb496197ea52485364a/packages/cli/src/commands/dev.js#L10-L77), or any other command.
-
 ### Overview
 
 Contributing to `@redwoodjs/cli` usually means adding a command or modifying an existing one. We've organized this doc around adding a command since if you know how to do this you'll know how to modify one too.
+
+#### Quickstart
+
+RedwoodJS CLI is usually run in a project, this is problematic for contributors, because the transpiled files are not in a project, but in the RedwoodJS framework repo. Luckily the path can be modified at run-time via an env-var: `RWJS_CWD=../path/to/project`.
+
+We've added a handy yarn alias to test your modified changes to the Redwood CLI against the "example-todo-main" fixture (`__fixtures__/example-todo-main`) you can do the following:
+
+```terminal
+cd packages/cli
+yarn dev <command>
+```
+
+> **Note:** If you are implementing a command and wish to run via `yarn dev <command>` be sure to `yarn build:clean-dist` beforehand to run the latest version.
+
+> **Important:** If your command alters the `example-todo-main` project (adds a package, modifies redwood.toml, etc) be sure not to commit and push those changes as part of your PR.
 
 ### Best Practices
 
@@ -163,7 +173,7 @@ See [Positional Arguments](https://github.com/yargs/yargs/blob/master/docs/advan
 export const description = 'Build for production'
 ```
 
-Runnning `yarn rw build help` displays:
+Running `yarn rw build help` displays:
 
 ```terminal
 rw build [side..]
@@ -280,8 +290,8 @@ The logic that goes in a command's `handler` varies too much to comment on gener
 
 If you're adding a command that serves as an entry point to more commands, like `db`, `destroy`, and `generate`, you'll want to create
 
-1) a file for the command in `./src/commands`, like in [Adding a Command](#adding-a-command), and
-2) a directory to store all the commands it serves as an entry point to.
+1. a file for the command in `./src/commands`, like in [Adding a Command](#adding-a-command), and
+2. a directory to store all the commands it serves as an entry point to.
 
 Although it's not necessary, for consistency, the file and directory should be named after the command that invokes them. Using the generate command as an example, in `./src/commands`, there's the file [generate.js](https://github.com/redwoodjs/redwood/blob/main/packages/cli/src/commands/generate.js) and the directory [generate](https://github.com/redwoodjs/redwood/tree/main/packages/cli/src/commands/generate).
 
@@ -300,8 +310,8 @@ export const builder = (yargs) =>
     .epilogue(
       `Also see the ${terminalLink(
         'Redwood CLI Reference',
-        'https://redwoodjs.com/reference/command-line-interface#generate-alias-g'
-      )}`
+        'https://redwoodjs.com/docs/cli-commands#generate-alias-g',
+      )}`,
     )
 ```
 
@@ -393,7 +403,7 @@ For the actual writing of files to disk, generators call on a function from [src
 More complicated generators, like auth, will have a little more logic in their directories:
 
 ```terminal
-src/commands/generate/auth
+src/commands/setup/auth
 ├── auth.js
 ├── providers
 ├── templates
@@ -406,26 +416,23 @@ There's another helper you'll see being used fairly often: [createYargsForCompon
 
 This function takes care of some of the boilerplate around yargs commands by creating the four constants&mdash;`command`, `description`, `builder`, and `handler`&mdash;for you.
 
-It has three parameters:
+It has four parameters:
 
 - `componentName`: a string, like `'page'`
 - `filesFn`: a function, usually the one called `files`
-- `builderObj`: an object, used to construct `builder`. Defaults to [yargsDefaults](#yargsdefaults)
+- `optionsObj`: an object, used to construct `options` for yargs. Defaults to [yargsDefaults](#yargsdefaults)
+- `positionalsObj`: an object, used to construct `positionals` for yargs.
 
 The idea here's to export as many constants as you can straight from `createYargsForComponentGeneration`'s returns:
 
 ```javascript
 // src/commands/generate/cell/cell.js
 
-export const {
-  command,
-  description,
-  builder,
-  handler,
-} = createYargsForComponentGeneration({
-  componentName: 'cell',
-  filesFn: files,
-})
+export const { command, description, builder, handler } =
+  createYargsForComponentGeneration({
+    componentName: 'cell',
+    filesFn: files,
+  })
 ```
 
 But you can use `createYargsForComponentGeneration` even if you don't plan on using all its return values. For example, the component generator uses `command`, `builder`, and `handler`, but doesn't destructure `description` and exports its own instead:
@@ -447,6 +454,7 @@ If you find yourself not using the `builder` from `createYargsForComponentGenera
 
 <!-- [todo] -->
 <!-- Link when merged -->
+
 `yargsDefaults` is an object that contains all the options common to generate commands. It's defined in `generate.js`, the generator entry-point command. So importing it usually looks like:
 
 ```javascript
@@ -454,6 +462,7 @@ import { yargsDefaults } from '../../generate'
 ```
 
 <!-- kind of a bad name -->
+
 We use `yargsDefaults` to "build" the builder. The generate sdl command is a good example. In sdl.js (which is in the generate directory in ./src/commands) `yargsDefault` is spread into another object, `defaults` (the name of this object is another convention):
 
 ```javascript
@@ -483,8 +492,8 @@ export const builder = (yargs) => {
     .epilogue(
       `Also see the ${terminalLink(
         'Redwood CLI Reference',
-        'https://redwoodjs.com/reference/command-line-interface#generate-sdl'
-      )}`
+        'https://redwoodjs.com/docs/cli-commands#generate-sdl',
+      )}`,
     )
   Object.entries(defaults).forEach(([option, config]) => {
     yargs.option(option, config)
@@ -525,7 +534,7 @@ test('creates a page component', () => {
   expect(
     singleWordFiles[
       path.normalize('/path/to/project/web/src/pages/HomePage/HomePage.js')
-    ]
+    ],
   ).toEqual(loadGeneratorFixture('page', 'singleWordPage.js'))
 })
 ```
@@ -538,32 +547,39 @@ Destroyers rollback the changes made by generators. They're one-to-one, in that,
 
 Just like generators, destroyers have helpers that minimize the amount of boilerplate you have to write so you can get straight to the custom, creative logic. They're similarly named too: `createYargsForComponentDestroy` is one that, like for generators, you should use if permitting. And you probably will for `builder` at least, since, so far, destroyers don't have any options.
 
-And just like generators, destoyers have tests. Right now, the way we test destroyers is by comparing the files that the generator produces with the files the destroyer attempts to delete. But because we don't actually want to write files to disk, we mock the api required to run the generator's `files` function, which is what you'll see going in the top-level [`__mocks__`](https://github.com/redwoodjs/redwood/blob/main/packages/cli/__mocks__/fs.js) directory. To do this, we use Jest's [manual mocking](https://jestjs.io/docs/en/manual-mocks.html) to mock NodeJS's `fs` module.
+And just like generators, destroyers have tests. Right now, the way we test destroyers is by comparing the files that the generator produces with the files the destroyer attempts to delete. But because we don't actually want to write files to disk, we mock the api required to run the generator's `files` function, which is what you'll see going in the top-level [`__mocks__`](https://github.com/redwoodjs/redwood/blob/main/packages/cli/__mocks__/fs.js) directory. To do this, we use Jest's [manual mocking](https://jestjs.io/docs/en/manual-mocks.html) to mock NodeJS's `fs` module.
 
 ### Adding a Provider to the Auth Generator
 
-Adding a provider to the auth generator is as easy as adding a file in [./src/commands/generate/auth/providers](https://github.com/redwoodjs/redwood/tree/main/packages/cli/src/commands/generate/auth/providers) that exports the three constants: `config`, `packages`, and `notes`.
+Adding a provider to the auth generator is as easy as adding a file in [./src/commands/setup/auth/providers](https://github.com/redwoodjs/redwood/tree/main/packages/cli/src/commands/setup/auth/providers) that exports the four constants: `config`, `webPackages`, `apiPackages` and `notes`.
 
 > Note that the provider you are about to add has to have already been implemented in `@redwoodjs/auth`. For example, the provider in the example below, Netlify Identity, is implemented [here](https://github.com/redwoodjs/redwood/blob/main/packages/auth/src/authClients/netlify.ts).
 >
 > So if you haven't done that yet, start with [this doc](https://github.com/redwoodjs/redwood/blob/main/packages/auth/README.md#contributing), then come back to this section afterwards.
 
-We'll use the [Netlify Identity](https://github.com/redwoodjs/redwood/blob/main/packages/cli/src/commands/generate/auth/providers/netlify.js) provider as an example to discuss these requirements:
+We'll use the [Netlify Identity](https://github.com/redwoodjs/redwood/blob/main/packages/cli/src/commands/setup/auth/providers/netlify.js) provider as an example to discuss these requirements:
 
 ```javascript
-// ./src/commands/generate/auth/providers/netlify.js
+// ./src/commands/setup/auth/providers/netlify.js
 
+// the lines that need to be added to App.{jsx,tsx}
 export const config = {
-  imports: [`import netlifyIdentity from 'netlify-identity-widget'`],
-  init: 'netlifyIdentity.init()',
+  imports: [
+    `import netlifyIdentity from 'netlify-identity-widget'`,
+    `import { isBrowser } from '@redwoodjs/prerender/browserUtils'`,
+  ],
+  init: 'isBrowser && netlifyIdentity.init()',
   authProvider: {
     client: 'netlifyIdentity',
     type: 'netlify',
   },
 }
 
-export const packages = ['netlify-identity-widget']
+// required packages to install
+export const webPackages = ['netlify-identity-widget']
+export const apiPackages = []
 
+// any notes to print out when the job is done
 export const notes = [
   'You will need to enable Identity on your Netlify site and configure the API endpoint.',
   'See: https://github.com/netlify/netlify-identity-widget#localhost',
@@ -574,7 +590,7 @@ export const notes = [
 
 `imports` is an array of strings that lists any imports that need to be added to the top of `./web/src/index.js`. Any initialization code that needs to go after the `import` statements goes in `init`. And `authProvider` is an object that contains exactly two keys, `client` and `type` that will be passed as props to `<AuthProvider>`.
 
-The second required export, `packages` is an array of strings of the packages that need to be added to the web workspace's `package.json`.
+The next required exports, `webPackages` and `apiPackages` each contain an array of strings of the packages that need to be added to the web, respectively api workspace's `package.json`.
 
 Lastly, `notes` is an array of strings to output after the generator has finished, instructing the user through any further required setup (like setting ENV vars). Each string in the array will output on its own line.
 
@@ -583,41 +599,13 @@ Lastly, `notes` is an array of strings to output after the generator has finishe
 <!-- TODO -->
 <!-- This might need updated soon... -->
 <!-- https://github.com/redwoodjs/redwood/pull/661#issuecomment-644146059 -->
+
 Most of the commands in `dbCommands` are just wrappers around [Prisma commands](https://www.prisma.io/docs/reference/tools-and-interfaces/prisma-cli/command-reference),
 the exception being `seed`, which runs a Redwood app's [./api/prisma/seed.js](https://github.com/redwoodjs/create-redwood-app/blob/master/api/prisma/seeds.js).
 
-Adding or modifying a command here's no different&mdash;there's still a `command`, `descripton`, `builder`, and `handler`. But there's a pattern to `handler`: it usually uses [runCommandTask](https://github.com/redwoodjs/redwood/blob/d51ade08118c17459cebcdb496197ea52485364a/packages/cli/src/lib/index.js#L349-L377), a Redwood-defined function.
+Adding or modifying a command here's no different&mdash;there's still a `command`, `description`, `builder`, and `handler`. But there's a pattern to `handler`: it usually uses [runCommandTask](https://github.com/redwoodjs/redwood/blob/d51ade08118c17459cebcdb496197ea52485364a/packages/cli/src/lib/index.js#L349-L377), a Redwood-defined function.
 
 This is because most `dbCommands` are really just running prisma commands, so they really just have to output something like `yarn prisma ...`.
-
-### redwood-tools
-
-[redwood-tools](https://github.com/redwoodjs/redwood/blob/main/packages/cli/src/redwood-tools.js) is Redwood's companion CLI development tool.
-You can find a list of its commands in the top-level [contributing](https://github.com/redwoodjs/redwood/blob/main/CONTRIBUTING.md) guide. If you're contributing to `redwood-tools`, you're contributing in a way that helps people contribute, which is pretty meta.
-
-As mentioned, redwood-tools uses the "regular" yargs api, which is defined by method-chaining.
-Adding a command here just entails adding another `command` method before the calls to `demandCommand` and `strict` at the end:
-
-```javascript
-// ./src/commands/redwood-tools.js
-
-...
-
-.command(
-  ['hello', 'h'],
-  'Say hi',
-  {},
-  () => console.log('hi!')
-)
-.demandCommand()
-.strict().argv
-```
-
-Contrived example aside, any command you add here should help people contribute to Redwood.
-
-### Converting to TypeScript
-
-We're in the midst of converting Redwood to TypeScript. If you're interested, we'd love your help! You can track our progress and see where you can contribute [here](https://github.com/redwoodjs/redwood/issues/523).
 
 #### Generators
 
@@ -645,8 +633,7 @@ redwood/packages/cli
     ├── commands
     ├── index.d.ts
     ├── index.js
-    ├── lib
-    └── redwood-tools.js
+    └── lib
 ```
 
 #### index.js
@@ -668,12 +655,12 @@ But it's distinct from the others in that it's the only one that has a shebang a
 
 We also use methods that we want to affect all commands here, like `demandCommand` and `strict`.
 
-#### src/lib/colors.js
+#### lib/colors.js
 
 [colors.js](https://github.com/redwoodjs/redwood/blob/main/packages/cli/src/lib/colors.js) provides a declarative way of coloring output to the console using [chalk](https://github.com/chalk/chalk#styles). You'll see it imported like:
 
 ```javascript
-import c from 'src/lib/colors'
+import c from '../lib/colors'
 ```
 
 And used mainly in catch statements, like:
@@ -711,7 +698,7 @@ You're not the only one. See the discussion [here](https://github.com/redwoodjs/
 
 ### Can I customize the generators?
 
-Not yet, but we're talking about it! See the ongoing dicussions in these issues:
+Not yet, but we're talking about it! See the ongoing discussions in these issues:
 
 - Investigate integrating or replacing generators with Plop [#653](https://github.com/redwoodjs/redwood/issues/653)
 - BYO Components to Scaffold Generator [#473](https://github.com/redwoodjs/redwood/issues/473)

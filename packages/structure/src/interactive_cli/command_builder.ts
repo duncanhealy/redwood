@@ -1,11 +1,11 @@
 import camelcase from 'camelcase'
 
-import { RWProject } from '../model/RWProject'
+import type { RWProject } from '../model/RWProject'
 import { validateRoutePath } from '../util'
 import { lazy, memo } from '../x/decorators'
 
 import { RedwoodCommandString } from './RedwoodCommandString'
-import { UI } from './ui'
+import type { UI } from './ui'
 
 export interface Opts {
   cmd: RedwoodCommandString
@@ -14,13 +14,15 @@ export interface Opts {
 }
 
 export function command_builder(
-  opts: Opts
+  opts: Opts,
 ): Promise<RedwoodCommandString | undefined> {
   return new CommandBuilder(opts).buildCommand()
 }
 
 class CommandBuilder {
-  constructor(private opts: Opts) {}
+  constructor(private opts: Opts) {
+    this.prompts = new PromptHelper(this.opts)
+  }
 
   @memo()
   async buildCommand(): Promise<RedwoodCommandString | undefined> {
@@ -41,15 +43,16 @@ class CommandBuilder {
           return await this.generate(await this.arg_generate_type())
         case 'db':
           switch (await this.arg_db_operation()) {
-            case 'save':
+            case 'save': {
               const name = await this.prompts.prompt('Choose migration name')
               return `db save ${name}`
+            }
             case 'up':
               return `db up`
           }
           return
       }
-    } catch (e) {
+    } catch (e: any) {
       if (e.message === 'break') {
         return
       }
@@ -58,29 +61,30 @@ class CommandBuilder {
   }
 
   @lazy() get args() {
-    return this.opts.cmd.parsed._
+    return this.opts.cmd.parsed._.map((arg) => arg.toString())
   }
 
   private async generate(type: string) {
     switch (type) {
-      case 'page':
+      case 'page': {
         const pageName = await this.prompts.prompt(
-          'Page Name (ex: Home, about, MyPage, contact)'
+          'Page Name (ex: Home, about, MyPage, contact)',
         )
         const defaultPath = '/' + camelcase(pageName)
         const path = await this.prompts.pagePath(defaultPath)
         return `generate page ${pageName} ${path}`
+      }
       case 'cell':
         return `generate cell ${await this.prompts.prompt('Cell Name')}`
       case 'scaffold':
         return `generate scaffold ${await this.arg_generate_scaffold_modelName()}`
       case 'component':
         return `generate component ${await this.prompts.prompt(
-          'Component Name'
+          'Component Name',
         )}`
       case 'layout':
         return `generate layout ${await this.prompts.prompt('Layout Name')}`
-      case 'sdl':
+      case 'sdl': {
         const modelName = await this.arg_generate_sdl_modelName()
         const opts = await this.prompts.sdl_options()
         if (!opts) {
@@ -91,10 +95,11 @@ class CommandBuilder {
         // crud: { type: 'boolean', default: false },
         // force: { type: 'boolean', default: false },
         return `generate sdl ${modelName}`
+      }
     }
   }
 
-  prompts = new PromptHelper(this.opts)
+  prompts: PromptHelper
 
   @memo()
   async arg_command(): Promise<string> {
@@ -145,18 +150,18 @@ class PromptHelper {
   async command() {
     return await this.opts.ui.pickOne(
       ['generate', 'db'], // TODO: add more commands (this could be generated from the redwoods/cli package)
-      'Choose Redwood CLI command'
+      'Choose Redwood CLI command',
     )
   }
   /**
-   * Pick a model name from prisma.schema
+   * Pick a model name from schema.prisma
    * @param msg
    */
   async model(msg: string) {
     const models = await this.opts.project.prismaDMMFModelNames()
     if (models.length === 0) {
       this.opts.ui.info(
-        'You must define at least one model in the "schema.prisma" file'
+        'You must define at least one model in the "schema.prisma" file',
       )
       return
     }
@@ -181,7 +186,7 @@ class PromptHelper {
           picked: false,
         },
       ],
-      'Options...'
+      'Options...',
     )
     if (!opts) {
       return
@@ -192,7 +197,7 @@ class PromptHelper {
   async generate_type() {
     return await this.opts.ui.pickOne(
       generatorTypes,
-      'Choose Redwood component type to generate'
+      'Choose Redwood component type to generate',
     )
   }
 

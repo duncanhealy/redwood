@@ -4,7 +4,7 @@ import { isAbsolute, join, normalize, sep as path_sep } from 'path'
  * Creates a file:// URL
  * Works with linux and windows paths
  * If the passed in value is already as file:// URL, it returns that same value
- * TOOD: rename to URL_fromFile
+ * TODO: rename to URL_fromFile
  * @param filePath
  */
 export function URL_file(filePath: string, ...parts: string[]): string {
@@ -33,7 +33,7 @@ export function URL_toFile(uriOrFilePath: string, sep = path_sep): string {
   if (!isAbsolute(p)) {
     throw new Error('absolute path expected: ' + p)
   }
-  return p!
+  return p
 }
 
 const FILE_SCHEME = 'file://'
@@ -51,7 +51,7 @@ function fileUriToPath(uri: string, sep = path_sep): string {
   if (
     typeof uri !== 'string' ||
     uri.length <= 7 ||
-    uri.substring(0, 7) !== FILE_SCHEME
+    !uri.startsWith(FILE_SCHEME)
   ) {
     throw new TypeError('must pass in a file:// URI to convert to a file path')
   }

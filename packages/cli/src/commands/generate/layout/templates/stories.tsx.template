@@ -1,7 +1,13 @@
+import type { Meta, StoryObj } from '@storybook/react'
+
 import ${singularPascalName}Layout from './${pascalName}Layout'
 
-export const generated = () => {
-  return <${singularPascalName}Layout />
+const meta: Meta<typeof ${singularPascalName}Layout> = {
+  component: ${singularPascalName}Layout,
 }
 
-export default { title: 'Layouts/${singularPascalName}Layout' }
+export default meta
+
+type Story = StoryObj<typeof ${singularPascalName}Layout>
+
+export const Primary: Story = {}

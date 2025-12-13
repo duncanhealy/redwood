@@ -1,9 +1,31 @@
 // helper used in Dev and Build commands
 
-import fs from 'fs'
 import path from 'path'
 
-import { runCommandTask, getPaths } from 'src/lib'
+import fs from 'fs-extra'
+
+import { runCommandTask, getPaths } from '../lib'
+
+const skipTask = (schema = getPaths().api.dbSchema) => {
+  if (!fs.existsSync(schema)) {
+    console.log(
+      `Skipping database and Prisma client generation, no \`schema.prisma\` file found: \`${schema}\``,
+    )
+    return true
+  }
+  return false
+}
+
+export const generatePrismaCommand = (schema) => {
+  if (skipTask(schema)) {
+    return {}
+  }
+
+  return {
+    cmd: `node "${require.resolve('prisma/build/index.js')}"`,
+    args: ['generate', schema && `--schema="${schema}"`],
+  }
+}
 
 /**
  * Conditionally generate the prisma client, skip if it already exists.
@@ -13,10 +35,7 @@ export const generatePrismaClient = async ({
   force = true,
   schema = getPaths().api.dbSchema,
 }) => {
-  if (!fs.existsSync(schema)) {
-    console.log(
-      `Skipping database and Prisma client generation, no \`schema.prisma\` file found: \`${schema}\``
-    )
+  if (skipTask(schema)) {
     return
   }
 
@@ -25,10 +44,9 @@ export const generatePrismaClient = async ({
     // The Prisma client throws if it is not generated.
     try {
       // Import the client from the redwood apps node_modules path.
-      const { PrismaClient } = require(path.join(
-        getPaths().base,
-        'node_modules/.prisma/client'
-      ))
+      const { PrismaClient } = require(
+        path.join(getPaths().base, 'node_modules/.prisma/client'),
+      )
       // eslint-disable-next-line
       new PrismaClient()
       return // Client exists, so abort.
@@ -41,12 +59,11 @@ export const generatePrismaClient = async ({
     [
       {
         title: 'Generating the Prisma client...',
-        cmd: 'yarn prisma',
-        args: ['generate', schema && `--schema="${schema}"`],
+        ...generatePrismaCommand(schema),
       },
     ],
     {
       verbose,
-    }
+    },
   )
 }

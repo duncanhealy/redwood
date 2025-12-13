@@ -1,4 +1,4 @@
-import { parse as parseGraphQL } from 'graphql'
+import { Kind, parse as parseGraphQL } from 'graphql'
 import * as tsm from 'ts-morph'
 import { DiagnosticSeverity } from 'vscode-languageserver-types'
 
@@ -43,7 +43,14 @@ export class RWCell extends RWComponent {
     if (!qs) {
       return undefined
     }
-    return parseGraphQL(qs)
+
+    try {
+      return parseGraphQL(qs)
+    } catch (e) {
+      console.error("Can't parse the graphql query string in", this.filePath)
+      console.error(e)
+      return undefined
+    }
   }
 
   // TODO: Move to RWCellQuery
@@ -53,7 +60,7 @@ export class RWCell extends RWComponent {
       return undefined
     }
     for (const def of ast.definitions) {
-      if (def.kind == 'OperationDefinition') {
+      if (def.kind == Kind.OPERATION_DEFINITION) {
         return def?.name?.value
       }
     }
@@ -65,7 +72,7 @@ export class RWCell extends RWComponent {
     if (!this.exportedSymbols.has('QUERY')) {
       yield err(
         this.uri,
-        'Every Cell MUST export a QUERY variable (GraphQL query string)'
+        'Every Cell MUST export a QUERY variable (GraphQL query string)',
       )
     }
 
@@ -80,7 +87,7 @@ export class RWCell extends RWComponent {
           },
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       // Maybe the AST has a syntax error...
       yield {
         uri: this.uri,
@@ -97,7 +104,7 @@ export class RWCell extends RWComponent {
     if (!this.exportedSymbols.has('Success')) {
       yield err(
         this.uri,
-        'Every Cell MUST export a Success variable (React Component)'
+        'Every Cell MUST export a Success variable (React Component)',
       )
     }
   }

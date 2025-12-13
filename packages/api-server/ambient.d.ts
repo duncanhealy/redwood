@@ -1,3 +1,1 @@
-declare module 'youch-terminal' {
-  export default function (json: Record<string, unknown>): string
-}
+declare module 'dotenv-defaults'

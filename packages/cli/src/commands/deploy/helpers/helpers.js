@@ -1,7 +1,9 @@
 import execa from 'execa'
 import terminalLink from 'terminal-link'
 
-import { getPaths } from '@redwoodjs/internal'
+import { getPaths } from '@redwoodjs/project-config'
+
+import c from '../../../lib/colors'
 
 export const deployBuilder = (yargs) => {
   yargs
@@ -24,8 +26,8 @@ export const deployBuilder = (yargs) => {
     .epilogue(
       `For more commands, options, and examples, see ${terminalLink(
         'Redwood CLI Reference',
-        'https://redwoodjs.com/docs/cli-commands#deploy'
-      )}`
+        'https://redwoodjs.com/docs/cli-commands#deploy',
+      )}`,
     )
 }
 
@@ -34,16 +36,20 @@ export const deployHandler = async ({ build, prisma, dm: dataMigrate }) => {
 
   let commandSet = []
   if (build) {
-    commandSet.push('yarn rw build')
+    commandSet.push('yarn rw build --verbose')
   }
   if (prisma) {
     commandSet.push('yarn rw prisma migrate deploy')
   }
   if (dataMigrate) {
-    commandSet.push('yarn rw dataMigrate up')
+    commandSet.push('yarn rw data-migrate up')
   }
 
-  execa(commandSet.join(' && '), {
+  const joinedCommands = commandSet.join(' && ')
+
+  console.log(c.note(`\nRunning:\n`) + `${joinedCommands} \n`)
+
+  return execa(joinedCommands, {
     shell: true,
     stdio: 'inherit',
     cwd: paths.base,

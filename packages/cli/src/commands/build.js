@@ -1,49 +1,22 @@
-import fs from 'fs'
-import path from 'path'
-
-import execa from 'execa'
-import Listr from 'listr'
-import VerboseRenderer from 'listr-verbose-renderer'
 import terminalLink from 'terminal-link'
 
-import { detectPrerenderRoutes } from '@redwoodjs/prerender'
-
-import { getPaths } from 'src/lib'
-import c from 'src/lib/colors'
-import { generatePrismaClient } from 'src/lib/generatePrismaClient'
+import c from '../lib/colors'
+import { exitWithError } from '../lib/exit'
+import { sides } from '../lib/project'
+import { checkNodeVersion } from '../middleware/checkNodeVersion'
 
 export const command = 'build [side..]'
 export const description = 'Build for production'
 
 export const builder = (yargs) => {
-  const apiExists = fs.existsSync(getPaths().api.src)
-  const webExists = fs.existsSync(getPaths().web.src)
-
-  const optionDefault = (apiExists, webExists) => {
-    let options = []
-    if (apiExists) {
-      options.push('api')
-    }
-    if (webExists) {
-      options.push('web')
-    }
-    return options
-  }
+  const choices = sides()
 
   yargs
     .positional('side', {
-      choices: ['api', 'web'],
-      default: optionDefault(apiExists, webExists),
+      choices,
+      default: choices,
       description: 'Which side(s) to build',
       type: 'array',
-    })
-    .option('stats', {
-      default: false,
-      description: `Use ${terminalLink(
-        'Webpack Bundle Analyzer',
-        'https://github.com/webpack-contrib/webpack-bundle-analyzer'
-      )}`,
-      type: 'boolean',
     })
     .option('verbose', {
       alias: 'v',
@@ -58,130 +31,31 @@ export const builder = (yargs) => {
     })
     .option('prisma', {
       type: 'boolean',
+      alias: 'db',
       default: true,
       description: 'Generate the Prisma client',
     })
-    .option('esbuild', {
-      type: 'boolean',
-      required: false,
-      description: 'Use ESBuild for api side [experimental]',
+    .middleware(() => {
+      const check = checkNodeVersion()
+
+      if (check.ok) {
+        return
+      }
+
+      exitWithError(undefined, {
+        message: `${c.error('Error')}: ${check.message}`,
+        includeEpilogue: false,
+      })
     })
     .epilogue(
       `Also see the ${terminalLink(
         'Redwood CLI Reference',
-        'https://redwoodjs.com/reference/command-line-interface#build'
-      )}`
+        'https://redwoodjs.com/docs/cli-commands#build',
+      )}`,
     )
 }
 
-export const handler = async ({
-  side = ['api', 'web'],
-  verbose = false,
-  stats = false,
-  prisma = true,
-  esbuild = false,
-  prerender,
-}) => {
-  const execCommandsForSides = {
-    api: {
-      // must use path.join() here, and for 'web' below, to support Windows
-      cwd: path.join(getPaths().base, 'api'),
-      cmd:
-        "yarn cross-env NODE_ENV=production babel src --out-dir dist --delete-dir-on-start --extensions .ts,.js --ignore '**/*.test.ts,**/*.test.js,**/__tests__'",
-    },
-    web: {
-      cwd: path.join(getPaths().base, 'web'),
-      cmd: `yarn cross-env NODE_ENV=production webpack --config ../node_modules/@redwoodjs/core/config/webpack.${
-        stats ? 'stats' : 'production'
-      }.js`,
-    },
-  }
-
-  if (stats) {
-    side = ['web']
-    console.log(
-      ' ⏩ Skipping `api` build because stats only works for Webpack at the moment.'
-    )
-  }
-
-  if (esbuild) {
-    console.log('Using experimental esbuild...')
-    execCommandsForSides.api.cmd = `yarn rimraf "${
-      getPaths().api.dist
-    }" && yarn cross-env NODE_ENV=production yarn rw-api-build`
-  }
-
-  const listrTasks = side.map((sideName) => {
-    const { cwd, cmd } = execCommandsForSides[sideName]
-    return {
-      title: `Building "${sideName}"${(stats && ' for stats') || ''}...`,
-      task: () => {
-        return execa(cmd, undefined, {
-          stdio: verbose ? 'inherit' : 'pipe',
-          shell: true,
-          cwd,
-        })
-      },
-    }
-  })
-
-  // Additional tasks, apart from build
-  if (side.includes('api') && prisma) {
-    try {
-      await generatePrismaClient({
-        verbose,
-        force: true,
-        schema: getPaths().api.dbSchema,
-      })
-    } catch (e) {
-      console.log(c.error(e.message))
-      process.exit(1)
-    }
-  }
-
-  if (side.includes('web')) {
-    // Clean web dist folder, _before_ building
-    listrTasks.unshift({
-      title: 'Cleaning "web"... (./web/dist/)',
-      task: () => {
-        return execa('rimraf dist/*', undefined, {
-          stdio: verbose ? 'inherit' : 'pipe',
-          shell: true,
-          cwd: getPaths().web.base,
-        })
-      },
-    })
-
-    // Prerender _after_ web build
-    if (prerender) {
-      const prerenderRoutes = detectPrerenderRoutes()
-
-      listrTasks.push({
-        title: 'Prerendering "web"...',
-        task: () => {
-          return execa('yarn rw prerender', undefined, {
-            stdio: verbose ? 'inherit' : 'pipe',
-            shell: true,
-            cwd: getPaths().base,
-          })
-        },
-        skip: () => {
-          if (prerenderRoutes.length === 0) {
-            return 'You have not marked any routes as `prerender` in `Routes.{js,tsx}`'
-          }
-        },
-      })
-    }
-  }
-
-  const tasks = new Listr(listrTasks, {
-    renderer: verbose && VerboseRenderer,
-  })
-
-  try {
-    await tasks.run()
-  } catch (e) {
-    console.log(c.error(e.message))
-    process.exit(1)
-  }
+export const handler = async (options) => {
+  const { handler } = await import('./buildHandler.js')
+  return handler(options)
 }

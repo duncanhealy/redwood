@@ -25,16 +25,10 @@ function toNormalizedJsonString(payload: Record<string, unknown>) {
 const createSignature = ({
   payload,
   secret = DEFAULT_WEBHOOK_SECRET,
-  options,
 }: {
   payload: string | Record<string, unknown>
   secret: string
-  options?: VerifyOptions
 }): string => {
-  if (options) {
-    console.warn('VerifyOptions are invalid for the Sha256Verifier')
-  }
-
   const algorithm = 'sha256'
   const hmac = createHmac(algorithm, secret)
 
@@ -43,7 +37,7 @@ const createSignature = ({
 
   const digest = Buffer.from(
     algorithm + '=' + hmac.update(payload).digest('hex'),
-    'utf8'
+    'utf8',
   )
 
   return digest.toString()
@@ -58,18 +52,12 @@ export const verifySignature = ({
   payload,
   secret = DEFAULT_WEBHOOK_SECRET,
   signature,
-  options,
 }: {
   payload: string | Record<string, unknown>
   secret: string
   signature: string
-  options?: VerifyOptions
 }): boolean => {
   try {
-    if (options) {
-      console.warn('VerifyOptions are invalid for the Sha256Verifier')
-    }
-
     const algorithm = signature.split('=')[0]
     const webhookSignature = Buffer.from(signature || '', 'utf8')
     const hmac = createHmac(algorithm, secret)
@@ -79,7 +67,7 @@ export const verifySignature = ({
 
     const digest = Buffer.from(
       algorithm + '=' + hmac.update(payload).digest('hex'),
-      'utf8'
+      'utf8',
     )
 
     // constant time comparison to prevent timing attacks
@@ -94,30 +82,28 @@ export const verifySignature = ({
     }
 
     throw new WebhookVerificationError()
-  } catch (error) {
+  } catch (error: any) {
     throw new WebhookVerificationError(
-      `${VERIFICATION_ERROR_MESSAGE}: ${error.message}`
+      `${VERIFICATION_ERROR_MESSAGE}: ${error.message}`,
     )
   }
 }
 
 /**
  *
- * SHA256 HMAC Payload Verfifier
+ * SHA256 HMAC Payload Verifier
  *
  * Based on GitHub's webhook payload verification
  * @see https://docs.github.com/en/developers/webhooks-and-events/securing-your-webhooks
  *
  */
-const sha256Verifier = (
-  options?: VerifyOptions | undefined
-): Sha256Verifier => {
+const sha256Verifier = (_options?: VerifyOptions): Sha256Verifier => {
   return {
     sign: ({ payload, secret }) => {
-      return createSignature({ payload, secret, options })
+      return createSignature({ payload, secret })
     },
     verify: ({ payload, secret, signature }) => {
-      return verifySignature({ payload, secret, signature, options })
+      return verifySignature({ payload, secret, signature })
     },
     type: 'sha256Verifier',
   }

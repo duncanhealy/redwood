@@ -1,25 +1,29 @@
-import { detectPrerenderRoutes } from '../router'
+import { vi, describe, it, expect } from 'vitest'
 
-jest.mock('@redwoodjs/internal', () => {
+import type { RWRoute } from '@redwoodjs/structure/dist/model/RWRoute'
+
+import { detectPrerenderRoutes } from '../detection'
+
+vi.mock('@redwoodjs/project-config', () => {
   return {
-    getPaths: jest.fn(() => {
+    getPaths: vi.fn(() => {
       return {
         base: '/mock/path',
         web: `/mock/path/web`,
       }
     }),
-    processPagesDir: jest.fn(() => []),
+    processPagesDir: vi.fn(() => []),
   }
 })
 
 // Mock route detection, tested in @redwoodjs/structure separately
 
-let mockedRoutes = []
-jest.mock('@redwoodjs/structure', () => {
+let mockedRoutes: Partial<RWRoute>[] = []
+vi.mock('@redwoodjs/structure', () => {
   return {
-    getProject: jest.fn(() => {
+    getProject: vi.fn(() => {
       return {
-        getRouter: jest.fn(() => {
+        getRouter: vi.fn(() => {
           return {
             routes: mockedRoutes,
           }
@@ -46,7 +50,7 @@ describe('Detecting routes', () => {
     expectPresence(output, { name: 'about', path: '/about' })
 
     expect(output).not.toContainEqual(
-      expect.objectContaining({ name: 'private', path: '/private' })
+      expect.objectContaining({ name: 'private', path: '/private' }),
     )
   })
 
@@ -66,7 +70,7 @@ describe('Detecting routes', () => {
     expect(output[0].path).toBe('/404')
   })
 
-  it('Should ignore routes with params', () => {
+  it('Should also allow routes with params', () => {
     mockedRoutes = [
       {
         name: 'taskDetail',
@@ -77,7 +81,7 @@ describe('Detecting routes', () => {
     ]
 
     const output = detectPrerenderRoutes()
-    expect(output.length).toBe(0)
+    expect(output.length).toBe(1)
   })
 
   it('Should return required keys', () => {

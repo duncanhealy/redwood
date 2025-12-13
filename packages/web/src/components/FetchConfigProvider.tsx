@@ -1,45 +1,59 @@
-import type { AuthContextInterface, SupportedAuthTypes } from '@redwoodjs/auth'
+import React from 'react'
+
+import type { UseAuth } from '@redwoodjs/auth'
+import { useNoAuth } from '@redwoodjs/auth'
+
+export const getApiGraphQLUrl = () => {
+  return globalThis.RWJS_API_GRAPHQL_URL
+}
 
 export interface FetchConfig {
   uri: string
-  headers?: { 'auth-provider': SupportedAuthTypes; authorization: string }
+  headers?: { 'auth-provider'?: string; authorization?: string }
 }
+
 export const FetchConfigContext = React.createContext<FetchConfig>({
-  uri: `${global.__REDWOOD__API_PROXY_PATH}/graphql`,
+  uri: getApiGraphQLUrl(),
 })
+
+interface Props {
+  useAuth?: UseAuth
+  children: React.ReactNode
+}
 
 /**
  * The `FetchConfigProvider` understands Redwood's Auth and determines the
  * correct request-headers based on a user's authentication state.
+ * Note that the auth bearer token is now passed in packages/web/src/apollo/index.tsx
+ * as the token is retrieved async
  */
-export const FetchConfigProvider: React.FunctionComponent<{
-  useAuth?: () => AuthContextInterface
-}> = ({
-  useAuth = global.__REDWOOD__USE_AUTH ??
-    (() => ({ loading: false, isAuthenticated: false })),
+export const FetchConfigProvider: React.FC<Props> = ({
+  useAuth = useNoAuth,
   ...rest
 }) => {
-  const { isAuthenticated, authToken, type } = useAuth()
+  const { isAuthenticated, type } = useAuth()
 
-  // Even though the user may be authenticated and we may require `authToken` to continue
-  // This should be handled by the `Private` route.
-  if (!isAuthenticated || !authToken) {
+  if (!isAuthenticated) {
     return (
       <FetchConfigContext.Provider
-        value={{ uri: `${global.__REDWOOD__API_PROXY_PATH}/graphql` }}
+        value={{ uri: getApiGraphQLUrl() }}
         {...rest}
       />
     )
   }
 
+  // @NOTE: See packages/web/src/apollo/links.tsx
+  // Where we remove the auth-provider header if token is null.
+  // Token === null means you're logged out OR are using cookie/middleware auth
+  const headers = {
+    'auth-provider': type,
+  }
+
   return (
     <FetchConfigContext.Provider
       value={{
-        uri: `${global.__REDWOOD__API_PROXY_PATH}/graphql`,
-        headers: {
-          'auth-provider': type,
-          authorization: `Bearer ${authToken}`,
-        },
+        uri: getApiGraphQLUrl(),
+        headers,
       }}
       {...rest}
     />

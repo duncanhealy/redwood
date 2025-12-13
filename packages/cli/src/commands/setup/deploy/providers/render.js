@@ -1,68 +1,27 @@
-import fs from 'fs'
+// import terminalLink from 'terminal-link'
 import path from 'path'
 
-import { getSchema, getConfig } from '@prisma/sdk'
+import { getSchema, getConfig } from '@prisma/internals'
+import fs from 'fs-extra'
+import { Listr } from 'listr2'
 
-import { getPaths } from 'src/lib'
+import { recordTelemetryAttributes } from '@redwoodjs/cli-helpers'
+import { errorTelemetry } from '@redwoodjs/telemetry'
 
-const PROJECT_NAME = getPaths().base.match(/[^/|\\]+$/)[0]
+import { getPaths, writeFilesTask, printSetupNotes } from '../../../../lib'
+import c from '../../../../lib/colors'
+import { addFilesTask, updateApiURLTask } from '../helpers'
+import {
+  POSTGRES_YAML,
+  RENDER_HEALTH_CHECK,
+  RENDER_YAML,
+  SQLITE_YAML,
+} from '../templates/render'
 
-const RENDER_YAML = (database) => {
-  return `services:
-- name: ${PROJECT_NAME}-web
-  type: web
-  env: static
-  buildCommand: yarn rw deploy render web
-  staticPublishPath: ./web/dist
-  envVars:
-  - key: NODE_VERSION
-    value: 14
-  routes:
-  - type: rewrite
-    source: /.redwood/functions/*
-# replace destination api url after first deploy to Render
-    destination: replace_me_with_api_url/*
-  - type: rewrite
-    source: /*
-    destination: /index.html
+export const command = 'render'
+export const description = 'Setup Render deploy'
 
-- name: ${PROJECT_NAME}-api
-  type: web
-  env: node
-  buildCommand: yarn && yarn rw deploy render api
-  startCommand: yarn rw serve api
-  envVars:
-  - key: NODE_VERSION
-    value: 14
-${database}
-`
-}
-
-const POSTGRES_YAML = `  - key: DATABASE_URL
-    fromDatabase:
-      name: ${PROJECT_NAME}-db
-      property: connectionString
-
-databases:
-  - name: ${PROJECT_NAME}-db
-`
-
-const SQLITE_YAML = `  - key: DATABASE_URL
-    value: file:./data/sqlite.db
-  disk:
-    name: sqlite-data
-    mountPath: /opt/render/project/src/api/db/data
-    sizeGB: 1`
-
-const RENDER_HEALTH_CHECK = `// render-health-check
-export const handler = async () => {
-  return {
-    statusCode: 200,
-  }
-}
-`
-// prisma data source check
-export const prismaDataSourceCheck = async (database) => {
+export const getRenderYamlContent = async (database) => {
   if (database === 'none') {
     return {
       path: path.join(getPaths().base, 'render.yaml'),
@@ -101,27 +60,68 @@ export const prismaDataSourceCheck = async (database) => {
     yarn rw prisma migrate dev
     yarn rw setup deploy render --database ${database}
 
-    Option 2: Rerun setup deloy command with current schema.prisma provider:
+    Option 2: Rerun setup deploy command with current schema.prisma provider:
     yarn rw setup deploy render --database ${detectedDatabase}`)
   }
 }
 
-//any packages to install
-export const apiPackages = ['@redwoodjs/api-server']
+export const builder = (yargs) =>
+  yargs.option('database', {
+    alias: 'd',
+    choices: ['none', 'postgresql', 'sqlite'],
+    description: 'Database deployment for Render only',
+    default: 'postgresql',
+    type: 'string',
+  })
 
-// any files to create
-export const files = [
+// any notes to print out when the job is done
+const notes = [
+  'You are ready to deploy to Render!\n',
+  'Go to https://dashboard.render.com/iacs to create your account and deploy to Render',
+  'Check out the deployment docs at https://render.com/docs/deploy-redwood for detailed instructions',
+  'Note: After first deployment to Render update the rewrite rule destination in `./render.yaml`',
+]
+
+const additionalFiles = [
   {
     path: path.join(getPaths().base, 'api/src/functions/healthz.js'),
     content: RENDER_HEALTH_CHECK,
   },
 ]
 
-export const apiProxyPath = '/.redwood/functions'
+export const handler = async ({ force, database }) => {
+  recordTelemetryAttributes({
+    command: 'setup deploy render',
+    force,
+    database,
+  })
+  const tasks = new Listr(
+    [
+      {
+        title: 'Adding render.yaml',
+        task: async () => {
+          const fileData = await getRenderYamlContent(database)
+          let files = {}
+          files[fileData.path] = fileData.content
+          return writeFilesTask(files, { overwriteExisting: force })
+        },
+      },
+      updateApiURLTask('/.redwood/functions'),
+      // Add health check api function
+      addFilesTask({
+        files: additionalFiles,
+        force,
+      }),
+      printSetupNotes(notes),
+    ],
+    { rendererOptions: { collapseSubtasks: false } },
+  )
 
-// any notes to print out when the job is done
-export const notes = [
-  'You are ready to deploy to Render!',
-  'Check out the docs at https://render.com/docs/deploy-redwood to get started\n',
-  'Note: After first deployment to Render update rewrite rule destiation in render.yaml',
-]
+  try {
+    await tasks.run()
+  } catch (e) {
+    errorTelemetry(process.argv, e.message)
+    console.error(c.error(e.message))
+    process.exit(e?.exitCode || 1)
+  }
+}

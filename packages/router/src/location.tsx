@@ -1,49 +1,100 @@
+'use client'
 import React from 'react'
 
-import { createNamedContext, gHistory } from './internal'
+import { createNamedContext } from './createNamedContext.js'
+import { gHistory } from './history.js'
+import type { TrailingSlashesTypes } from './util.js'
 
-export interface LocationContextType {
-  pathname: string
-  search?: string
-  hash?: string
-}
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface LocationContextType extends URL {}
 
 const LocationContext = createNamedContext<LocationContextType>('Location')
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+interface Location extends URL {}
+
 interface LocationProviderProps {
-  location?: {
-    pathname: string
-    search?: string
-    hash?: string
-  }
+  location?: Location
+  trailingSlashes?: TrailingSlashesTypes
+  children?: React.ReactNode
 }
 
-class LocationProvider extends React.Component<LocationProviderProps> {
-  // When prerendering, there might be more than one level of location providers. Use the values from the one above.
+interface LocationProviderState {
+  context: Location | undefined
+}
+
+class LocationProvider extends React.Component<
+  LocationProviderProps,
+  LocationProviderState
+> {
+  // When prerendering, there might be more than one level of location
+  // providers. Use the values from the one above.
+  // (this is basically the class component version of `useLocation()`)
   static contextType = LocationContext
+
+  declare context: React.ContextType<typeof LocationContext>
   HISTORY_LISTENER_ID: string | undefined = undefined
 
-  state = {
+  state: LocationProviderState = {
     context: this.getContext(),
   }
 
   getContext() {
-    const windowLocation =
-      typeof window !== 'undefined'
-        ? window.location
-        : {
-            pathname: this.context?.pathname || '',
-            search: this.context?.search || '',
-            hash: this.context?.hash || '',
-          }
-    const { pathname, search, hash } = this.props.location || windowLocation
+    let windowLocation
 
-    return { pathname, search, hash }
+    if (typeof window !== 'undefined') {
+      const { pathname } = window.location
+
+      // Since we have to update the URL, we might as well handle the trailing
+      // slash here, before matching.
+      //
+      // - never -> strip trailing slashes ("/about/" -> "/about")
+      // - always -> add trailing slashes ("/about" -> "/about/")
+      // - preserve -> do nothing ("/about" -> "/about", "/about/" -> "/about/")
+      //
+      switch (this.props.trailingSlashes) {
+        case 'never':
+          if (pathname.endsWith('/')) {
+            window.history.replaceState(
+              {},
+              '',
+              pathname.substr(0, pathname.length - 1),
+            )
+          }
+          break
+
+        case 'always':
+          if (!pathname.endsWith('/')) {
+            window.history.replaceState({}, '', pathname + '/')
+          }
+          break
+
+        default:
+          break
+      }
+
+      windowLocation = new URL(window.location.href)
+    }
+
+    return this.props.location || this.context || windowLocation
   }
 
+  // componentDidMount() is not called during server rendering (aka SSR and
+  // prerendering)
   componentDidMount() {
-    this.HISTORY_LISTENER_ID = gHistory.listen(() => {
-      this.setState(() => ({ context: this.getContext() }))
+    this.HISTORY_LISTENER_ID = gHistory.listen((_, options) => {
+      const context = this.getContext()
+      this.setState((lastState) => {
+        if (
+          (context?.pathname !== lastState?.context?.pathname ||
+            context?.search !== lastState?.context?.search) &&
+          options?.scroll === true
+        ) {
+          globalThis?.scrollTo(0, 0)
+        }
+
+        return { context }
+      })
     })
   }
 

@@ -1,55 +1,63 @@
-global.__dirname = __dirname
-import fs from 'fs'
+globalThis.__dirname = __dirname
+import fs from 'fs-extra'
+import { vol } from 'memfs'
+import { vi, describe, beforeEach, afterEach, test, expect } from 'vitest'
 
-import 'src/lib/test'
+import '../../../../lib/test'
 
-import { getDefaultArgs } from 'src/lib'
-
+import { getDefaultArgs } from '../../../../lib'
 import { builder, files } from '../../../generate/service/service'
 import { tasks } from '../service'
 
-jest.mock('fs')
-jest.mock('@babel/core', () => {
+vi.mock('fs-extra')
+
+vi.mock('../../../../lib', async (importOriginal) => {
+  const originalLib = await importOriginal()
   return {
-    transform: () => ({
-      code: '',
-    }),
-  }
-})
-jest.mock('src/lib', () => {
-  const path = require('path')
-  return {
-    ...jest.requireActual('src/lib'),
+    ...originalLib,
     generateTemplate: () => '',
-    getSchema: () =>
-      require(path.join(global.__dirname, 'fixtures', 'post.json')),
   }
 })
 
-describe('rw destory service', () => {
+vi.mock('../../../../lib/schemaHelpers', async (importOriginal) => {
+  const originalSchemaHelpers = await importOriginal()
+  const path = require('path')
+  return {
+    ...originalSchemaHelpers,
+    getSchema: () =>
+      require(path.join(globalThis.__dirname, 'fixtures', 'post.json')),
+  }
+})
+
+describe('rw destroy service', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+  })
+
   afterEach(() => {
-    fs.__setMockFiles({})
-    jest.spyOn(fs, 'unlinkSync').mockClear()
+    vol.reset()
+    vi.spyOn(fs, 'unlinkSync').mockClear()
+    console.info.mockRestore()
+    console.log.mockRestore()
   })
 
   describe('for javascript files', () => {
     beforeEach(async () => {
-      fs.__setMockFiles(
-        await files({ ...getDefaultArgs(builder), name: 'User' })
-      )
+      vol.fromJSON(await files({ ...getDefaultArgs(builder), name: 'User' }))
     })
     test('destroys service files', async () => {
-      const unlinkSpy = jest.spyOn(fs, 'unlinkSync')
+      const unlinkSpy = vi.spyOn(fs, 'unlinkSync')
       const t = tasks({
         componentName: 'service',
         filesFn: files,
         name: 'User',
       })
-      t.setRenderer('silent')
+      t.options.renderer = 'silent'
 
       return t.run().then(async () => {
         const generatedFiles = Object.keys(
-          await files({ ...getDefaultArgs(builder), name: 'User' })
+          await files({ ...getDefaultArgs(builder), name: 'User' }),
         )
         expect(generatedFiles.length).toEqual(unlinkSpy.mock.calls.length)
         generatedFiles.forEach((f) => expect(unlinkSpy).toHaveBeenCalledWith(f))
@@ -59,23 +67,23 @@ describe('rw destory service', () => {
 
   describe('for typescript files', () => {
     beforeEach(async () => {
-      fs.__setMockFiles(
+      vol.fromJSON(
         await files({
           ...getDefaultArgs(builder),
           typescript: true,
           name: 'User',
-        })
+        }),
       )
     })
 
     test('destroys service files', async () => {
-      const unlinkSpy = jest.spyOn(fs, 'unlinkSync')
+      const unlinkSpy = vi.spyOn(fs, 'unlinkSync')
       const t = tasks({
         componentName: 'service',
         filesFn: files,
         name: 'User',
       })
-      t.setRenderer('silent')
+      t.options.renderer = 'silent'
 
       return t.run().then(async () => {
         const generatedFiles = Object.keys(
@@ -83,7 +91,7 @@ describe('rw destory service', () => {
             ...getDefaultArgs(builder),
             typescript: true,
             name: 'User',
-          })
+          }),
         )
         expect(generatedFiles.length).toEqual(unlinkSpy.mock.calls.length)
         generatedFiles.forEach((f) => expect(unlinkSpy).toHaveBeenCalledWith(f))

@@ -1,15 +1,13 @@
 import camelcase from 'camelcase'
-import pascalcase from 'pascalcase'
-import pluralize from 'pluralize'
 import terminalLink from 'terminal-link'
 
-import { getSchema } from 'src/lib'
-
 import { transformTSToJS } from '../../../lib'
-import { yargsDefaults } from '../../generate'
+import { pluralize, singularize } from '../../../lib/rwPluralize'
+import { getSchema, verifyModelName } from '../../../lib/schemaHelpers'
+import { yargsDefaults, relationsForModel } from '../helpers'
 import {
-  templateForComponentFile,
   createYargsForComponentGeneration,
+  templateForComponentFile,
 } from '../helpers'
 
 const DEFAULT_SCENARIO_NAMES = ['one', 'two']
@@ -44,17 +42,32 @@ export const parseSchema = async (model) => {
 }
 
 export const scenarioFieldValue = (field) => {
-  const rand = parseInt(Math.random() * 10000000)
+  const randFloat = Math.random() * 10000000
+  const randInt = parseInt(Math.random() * 10000000)
+  const randIntArray = [
+    parseInt(Math.random() * 300),
+    parseInt(Math.random() * 300),
+    parseInt(Math.random() * 300),
+  ]
 
   switch (field.type) {
-    case 'String':
-      return field.isUnique ? `String${rand}` : 'String'
-    case 'Int':
-      return rand
+    case 'BigInt':
+      return `${BigInt(randInt)}n`
+    case 'Boolean':
+      return true
     case 'DateTime':
-      return new Date().toISOString().replace(/\.\d{3}/, '')
+      return new Date()
+    case 'Decimal':
+    case 'Float':
+      return randFloat
+    case 'Int':
+      return randInt
     case 'Json':
       return { foo: 'bar' }
+    case 'String':
+      return field.isUnique ? `String${randInt}` : 'String'
+    case 'Bytes':
+      return `Buffer.from([${randIntArray}])`
     default: {
       if (field.kind === 'enum' && field.enumValues[0]) {
         return field.enumValues[0].dbName || field.enumValues[0].name
@@ -66,7 +79,7 @@ export const scenarioFieldValue = (field) => {
 export const fieldsToScenario = async (
   scalarFields,
   relations,
-  foreignKeys
+  foreignKeys,
 ) => {
   const data = {}
 
@@ -90,7 +103,7 @@ export const fieldsToScenario = async (
       create: await fieldsToScenario(
         relScalarFields,
         relRelations,
-        relForeignKeys
+        relForeignKeys,
       ),
     }
   }
@@ -108,20 +121,77 @@ export const buildScenario = async (model) => {
 
   // turn scalar fields into actual scenario data
   for (const name of DEFAULT_SCENARIO_NAMES) {
-    standardScenario[scenarioModelName][name] = await fieldsToScenario(
+    standardScenario[scenarioModelName][name] = {}
+
+    const scenarioData = await fieldsToScenario(
       scalarFields,
       relations,
-      foreignKeys
+      foreignKeys,
     )
+
+    Object.keys(scenarioData).forEach((key) => {
+      const value = scenarioData[key]
+
+      // Support BigInt
+      if (value && typeof value === 'string' && value.match(/^\d+n$/)) {
+        scenarioData[key] = `${value.slice(0, value.length - 1)}n`
+      }
+    })
+
+    standardScenario[scenarioModelName][name].data = scenarioData
   }
 
   return standardScenario
 }
 
+// creates the scenario data based on the data definitions in schema.prisma
+// and transforms data types to strings and other values that are compatible with Prisma
+export const buildStringifiedScenario = async (model) => {
+  const scenario = await buildScenario(model)
+
+  const jsonString = JSON.stringify(scenario, (_key, value) => {
+    if (typeof value === 'bigint') {
+      return value.toString()
+    }
+
+    if (typeof value === 'string' && value.match(/^\d+n$/)) {
+      return Number(value.slice(0, value.length - 1))
+    }
+
+    return value
+  })
+
+  // Not all values can be represented as JSON, like function invocations
+  return jsonString.replace(/"Buffer\.from\(([^)]+)\)"/g, 'Buffer.from($1)')
+}
+
+export const fieldTypes = async (model) => {
+  const { scalarFields } = await parseSchema(model)
+
+  // Example value
+  // {
+  //   name: 'score',
+  //   kind: 'scalar',
+  //   isList: false,
+  //   isRequired: true,
+  //   isUnique: false,
+  //   isId: false,
+  //   isReadOnly: false,
+  //   hasDefaultValue: false,
+  //   type: 'Int',
+  //   isGenerated: false,
+  //   isUpdatedAt: false
+  // }
+  return scalarFields.reduce((acc, value) => {
+    acc[value.name] = value.type
+    return acc
+  }, {})
+}
+
 // outputs fields necessary to create an object in the test file
 export const fieldsToInput = async (model) => {
   const { scalarFields, foreignKeys } = await parseSchema(model)
-  const modelName = camelcase(pluralize.singular(model))
+  const modelName = camelcase(singularize(model))
   let inputObj = {}
 
   scalarFields.forEach((field) => {
@@ -142,7 +212,7 @@ export const fieldsToInput = async (model) => {
 // outputs fields necessary to update an object in the test file
 export const fieldsToUpdate = async (model) => {
   const { scalarFields, relations, foreignKeys } = await parseSchema(model)
-  const modelName = camelcase(pluralize.singular(model))
+  const modelName = camelcase(singularize(model))
   let field, newValue, fieldName
 
   // find an editable scalar field, ideally one that isn't a foreign key
@@ -160,8 +230,8 @@ export const fieldsToUpdate = async (model) => {
 
   if (foreignKeys.includes(field.name)) {
     // no scalar fields, change a relation field instead
-    // { post: [ 'postId' ], tag: [ 'tagId' ] }
-    fieldName = Object.values(relations)[0]
+    // { post: { foreignKey: [ 'postId' ], type: "Post" }, tag: { foreignKey: [ 'tagId' ], type: "Post" } }
+    fieldName = Object.values(relations)[0].foreignKey
     newValue = `scenario.${modelName}.two.${field.name}`
   } else {
     fieldName = field.name
@@ -172,22 +242,34 @@ export const fieldsToUpdate = async (model) => {
 
     // depending on the field type, append/update the value to something different
     switch (field.type) {
-      case 'String': {
-        newValue = newValue + '2'
+      case 'BigInt':
+        newValue = `${newValue + 1n}`
+        break
+      case 'Boolean': {
+        newValue = !value
+        break
+      }
+      case 'DateTime': {
+        let date = new Date()
+        date.setDate(date.getDate() + 1)
+        newValue = date
+        break
+      }
+      case 'Decimal':
+      case 'Float': {
+        newValue = newValue + 1.1
         break
       }
       case 'Int': {
         newValue = newValue + 1
         break
       }
-      case 'DateTime': {
-        let date = new Date()
-        date.setDate(date.getDate() + 1)
-        newValue = date.toISOString().replace(/\.\d{3}/, '')
-        break
-      }
       case 'Json': {
         newValue = { foo: 'baz' }
+        break
+      }
+      case 'String': {
+        newValue = newValue + '2'
         break
       }
       default: {
@@ -206,26 +288,36 @@ export const fieldsToUpdate = async (model) => {
   return { [fieldName]: newValue }
 }
 
+const getIdName = async (model) => {
+  const schema = await getSchema(model)
+  return schema.fields.find((field) => field.isId)?.name
+}
+
 export const files = async ({
   name,
-  tests = true,
+  tests,
   relations,
   typescript,
   ...rest
 }) => {
   const componentName = camelcase(pluralize(name))
-  const model = pascalcase(pluralize.singular(name))
+  const model = name
+  const idName = await getIdName(model)
   const extension = 'ts'
-  const serviceFile = templateForComponentFile({
+
+  const modelRelations = relations || relationsForModel(await getSchema(model))
+
+  const serviceFile = await templateForComponentFile({
     name,
     componentName: componentName,
     extension: `.${extension}`,
     apiPathSection: 'services',
     generator: 'service',
     templatePath: `service.${extension}.template`,
-    templateVars: { relations: relations || [], ...rest },
+    templateVars: { relations: modelRelations, idName, ...rest },
   })
-  const testFile = templateForComponentFile({
+
+  const testFile = await templateForComponentFile({
     name,
     componentName: componentName,
     extension: `.test.${extension}`,
@@ -236,10 +328,17 @@ export const files = async ({
       relations: relations || [],
       create: await fieldsToInput(model),
       update: await fieldsToUpdate(model),
+      types: await fieldTypes(model),
+      prismaImport: (await parseSchema(model)).scalarFields.some(
+        (field) => field.type === 'Decimal',
+      ),
+      prismaModel: model,
+      idName,
       ...rest,
     },
   })
-  const scenariosFile = templateForComponentFile({
+
+  const scenariosFile = await templateForComponentFile({
     name,
     componentName: componentName,
     extension: `.scenarios.${extension}`,
@@ -248,6 +347,10 @@ export const files = async ({
     templatePath: `scenarios.${extension}.template`,
     templateVars: {
       scenario: await buildScenario(model),
+      stringifiedScenario: await buildStringifiedScenario(model),
+      prismaModel: model,
+      idName,
+      relations: modelRelations,
       ...rest,
     },
   })
@@ -263,9 +366,11 @@ export const files = async ({
   //    "path/to/fileA": "<<<template>>>",
   //    "path/to/fileB": "<<<template>>>",
   // }
-  return files.reduce((acc, [outputPath, content]) => {
+  return files.reduce(async (accP, [outputPath, content]) => {
+    const acc = await accP
+
     if (!typescript) {
-      content = transformTSToJS(outputPath, content)
+      content = await transformTSToJS(outputPath, content)
       outputPath = outputPath.replace('.ts', '.js')
     }
 
@@ -273,18 +378,17 @@ export const files = async ({
       [outputPath]: content,
       ...acc,
     }
-  }, {})
+  }, Promise.resolve({}))
 }
 
 export const defaults = {
   ...yargsDefaults,
   tests: {
-    default: true,
     description: 'Generate test files',
     type: 'boolean',
   },
   crud: {
-    default: false,
+    default: true,
     description: 'Create CRUD functions',
     type: 'boolean',
   },
@@ -296,22 +400,25 @@ export const builder = (yargs) => {
       description: 'Name of the service',
       type: 'string',
     })
+    .option('rollback', {
+      description: 'Revert all generator actions if an error occurs',
+      type: 'boolean',
+      default: true,
+    })
     .epilogue(
       `Also see the ${terminalLink(
         'Redwood CLI Reference',
-        'https://redwoodjs.com/reference/command-line-interface#generate-service'
-      )}`
+        'https://redwoodjs.com/docs/cli-commands#generate-service',
+      )}`,
     )
   Object.entries(defaults).forEach(([option, config]) => {
     yargs.option(option, config)
   })
 }
 
-export const {
-  command,
-  description,
-  handler,
-} = createYargsForComponentGeneration({
-  componentName: 'service',
-  filesFn: files,
-})
+export const { command, description, handler } =
+  createYargsForComponentGeneration({
+    componentName: 'service',
+    preTasksFn: verifyModelName,
+    filesFn: files,
+  })

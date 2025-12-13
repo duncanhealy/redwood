@@ -1,9 +1,10 @@
 import camelcase from 'camelcase'
-import Listr from 'listr'
+import { Listr } from 'listr2'
 
-import { deleteFilesTask, removeRoutesFromRouterTask } from 'src/lib'
-import c from 'src/lib/colors'
+import { recordTelemetryAttributes } from '@redwoodjs/cli-helpers'
 
+import { deleteFilesTask, removeRoutesFromRouterTask } from '../../../lib'
+import c from '../../../lib/colors'
 import { pathName } from '../../generate/helpers'
 import {
   files as pageFiles,
@@ -33,6 +34,8 @@ export const tasks = ({ name, path }) =>
           const f = pageFiles({
             name,
             path: p,
+            stories: true,
+            tests: true,
             ...templateVars(p),
           })
           return deleteFilesTask(f)
@@ -43,10 +46,13 @@ export const tasks = ({ name, path }) =>
         task: async () => removeRoutesFromRouterTask([camelcase(name)]),
       },
     ],
-    { collapse: false, exitOnError: true }
+    { rendererOptions: { collapseSubtasks: false }, exitOnError: true },
   )
 
 export const handler = async ({ name, path }) => {
+  recordTelemetryAttributes({
+    command: 'destroy page',
+  })
   const t = tasks({ name, path })
   try {
     await t.run()

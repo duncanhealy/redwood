@@ -1,25 +1,38 @@
 import type { APIGatewayProxyEvent } from 'aws-lambda'
 
+import type { VerifyOptions, SupportedVerifierTypes } from '../auth/verifiers'
 import {
   createVerifier,
-  VerifyOptions,
   WebhookVerificationError,
   DEFAULT_WEBHOOK_SECRET,
-  SupportedVerifierTypes,
-} from 'src/auth/verifiers'
+  DEFAULT_TOLERANCE,
+} from '../auth/verifiers'
 
 export {
   VerifyOptions,
   WebhookVerificationError,
   DEFAULT_WEBHOOK_SECRET,
-} from 'src/auth/verifiers'
+  SupportedVerifierTypes,
+} from '../auth/verifiers'
 
 export const DEFAULT_WEBHOOK_SIGNATURE_HEADER = 'RW-WEBHOOK-SIGNATURE'
 
 /**
+ * Extracts body payload from event with base64 encoding check
+ *
+ */
+const eventBody = (event: APIGatewayProxyEvent) => {
+  if (event.isBase64Encoded) {
+    return Buffer.from(event.body || '', 'base64').toString('utf-8')
+  } else {
+    return event.body || ''
+  }
+}
+
+/**
  * Extracts signature from Lambda Event.
  *
- * @param {APIGatewayProxyEvent} event - The event that incudes the request details, like headers
+ * @param {APIGatewayProxyEvent} event - The event that includes the request details, like headers
  * @param {string} signatureHeader - The name of header key that contains the signature; defaults to DEFAULT_WEBHOOK_SIGNATURE_HEADER
  * @return {string} - The signature found in the headers specified by signatureHeader
  *
@@ -63,21 +76,35 @@ export const verifyEvent = (
     payload?: string
     secret?: string
     options?: VerifyOptions | undefined
-  }
+  },
 ): boolean | WebhookVerificationError => {
   let body = ''
 
   if (payload) {
     body = payload
   } else {
-    body = event.body || ''
+    body = eventBody(event)
   }
 
-  const signature = signatureFromEvent({
+  let signature = signatureFromEvent({
     event,
     signatureHeader:
       options?.signatureHeader || DEFAULT_WEBHOOK_SIGNATURE_HEADER,
   })
+
+  if (options?.signatureTransformer) {
+    signature = options.signatureTransformer(signature)
+  }
+
+  if (options?.eventTimestamp) {
+    const timestamp = options?.currentTimestampOverride ?? Date.now()
+    const difference = Math.abs(timestamp - options?.eventTimestamp)
+    const tolerance = options?.tolerance ?? DEFAULT_TOLERANCE
+
+    if (difference > tolerance) {
+      throw new WebhookVerificationError()
+    }
+  }
 
   const { verify } = createVerifier(type, options)
 
@@ -109,7 +136,7 @@ export const verifySignature = (
     secret: string
     signature: string
     options?: VerifyOptions | undefined
-  }
+  },
 ): boolean | WebhookVerificationError => {
   const { verify } = createVerifier(type, options)
 
@@ -138,7 +165,7 @@ export const signPayload = (
     payload: string
     secret: string
     options?: VerifyOptions | undefined
-  }
+  },
 ): string => {
   const { sign } = createVerifier(type, options)
 

@@ -1,39 +1,46 @@
-global.__dirname = __dirname
-jest.mock('fs')
-jest.mock('src/lib', () => {
+globalThis.__dirname = __dirname
+vi.mock('fs-extra')
+vi.mock('../../../../lib', async (importOriginal) => {
+  const originalLib = await importOriginal()
   return {
-    ...jest.requireActual('src/lib'),
+    ...originalLib,
     generateTemplate: () => '',
   }
 })
 
-import fs from 'fs'
+import fs from 'fs-extra'
+import { vol } from 'memfs'
+import { vi, beforeEach, afterEach, test, expect } from 'vitest'
 
-import 'src/lib/test'
+import '../../../../lib/test'
 
 import { files } from '../../../generate/function/function'
 import { tasks } from '../function'
 
 beforeEach(async () => {
-  fs.__setMockFiles(await files({ name: 'sendMail' }))
+  vol.fromJSON(files({ name: 'sendMail' }))
+  vi.spyOn(console, 'info').mockImplementation(() => {})
+  vi.spyOn(console, 'log').mockImplementation(() => {})
 })
 
 afterEach(() => {
-  fs.__setMockFiles({})
-  jest.spyOn(fs, 'unlinkSync').mockClear()
+  vol.reset()
+  vi.spyOn(fs, 'unlinkSync').mockClear()
+  console.info.mockRestore()
+  console.log.mockRestore()
 })
 
 test('destroys service files', async () => {
-  const unlinkSpy = jest.spyOn(fs, 'unlinkSync')
+  const unlinkSpy = vi.spyOn(fs, 'unlinkSync')
   const t = tasks({
     componentName: 'service',
     filesFn: files,
     name: 'sendMail',
   })
-  t.setRenderer('silent')
+  t.options.renderer = 'silent'
 
   return t.run().then(async () => {
-    const generatedFiles = Object.keys(await files({ name: 'sendMail' }))
+    const generatedFiles = Object.keys(files({ name: 'sendMail' }))
     expect(generatedFiles.length).toEqual(unlinkSpy.mock.calls.length)
     generatedFiles.forEach((f) => expect(unlinkSpy).toHaveBeenCalledWith(f))
   })

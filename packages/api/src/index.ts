@@ -1,8 +1,15 @@
-import './global.api-auto-imports'
+export * from './auth'
+export * from './errors'
+export * from './validations/validations'
+export * from './validations/errors'
 
-export * from 'apollo-server-lambda'
-export * from './makeServices'
-export * from './makeMergedSchema/makeMergedSchema'
-export * from './functions/graphql'
-export * from './globalContext'
-export * from './parseJWT'
+export * from './types'
+
+export * from './transforms'
+export * from './cors'
+export * from './event'
+
+// @NOTE: use require, to avoid messing around with tsconfig and nested output dirs
+const packageJson = require('../package.json')
+export const prismaVersion = packageJson?.dependencies['@prisma/client']
+export const redwoodVersion = packageJson?.version

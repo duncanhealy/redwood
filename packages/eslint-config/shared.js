@@ -19,25 +19,37 @@ module.exports = {
     'plugin:react/recommended',
     'plugin:prettier/recommended',
     'plugin:jest-dom/recommended',
-    'prettier/react',
   ],
-  parser: 'babel-eslint',
+  // @NOTE parserOptions defined separately for project and framework
+  parser: '@babel/eslint-parser',
   plugins: [
     'prettier',
-    'babel',
+    '@babel',
     'import',
     'jsx-a11y',
     'react',
     'react-hooks',
     'jest-dom',
+    '@redwoodjs',
   ],
-  ignorePatterns: ['node_modules', 'dist'],
+  // In addition to this, eslint also has some implicit ignore patterns, like
+  // `node_modules`.
+  // See https://eslint.org/docs/latest/use/configure/ignore-deprecated
+  ignorePatterns: ['dist'],
   settings: {
     react: {
       version: 'detect',
     },
+    // For the import/order rule. Configures how it tells if an import is "internal" or not.
+    // An "internal" import is basically just one that's aliased.
+    //
+    // See...
+    // - https://github.com/import-js/eslint-plugin-import/blob/main/docs/rules/order.md#groups-array
+    // - https://github.com/import-js/eslint-plugin-import/blob/main/README.md#importinternal-regex
+    'import/internal-regex': '^src/',
   },
   rules: {
+    '@redwoodjs/process-env-computed': 'error',
     'prettier/prettier': 'warn',
     'no-console': 'off',
     'prefer-object-spread': 'warn',
@@ -55,37 +67,100 @@ module.exports = {
       { varsIgnorePattern: '^_', argsIgnorePattern: '^_' },
     ],
     // React rules
-    'react/prop-types': [
-      'warn',
+    'react/prop-types': 'off',
+    'react/display-name': 'off',
+    'react-hooks/exhaustive-deps': 'warn',
+    'import/order': [
+      'error',
       {
-        skipUndeclared: true,
-        ignore: ['style', 'children', 'className', 'theme'],
+        'newlines-between': 'always',
+        // We set this to an empty array to override the default value, which is `['builtin', 'external', 'object']`.
+        // Judging by the number of issues on the repo, this option seems to be notoriously tricky to understand.
+        // From what I can tell, if the value of this is `['builtin']` that means it won't sort builtins.
+        // But we have a rule for builtins below (react), so that's not what we want.
+        //
+        // See...
+        // - https://github.com/import-js/eslint-plugin-import/pull/1570
+        // - https://github.com/import-js/eslint-plugin-import/issues/1565
+        pathGroupsExcludedImportTypes: [],
+        // Only doing this to add internal. The order here maters.
+        // See https://github.com/import-js/eslint-plugin-import/blob/main/docs/rules/order.md#groups-array
+        groups: [
+          'builtin',
+          'external',
+          'internal',
+          'parent',
+          'sibling',
+          'index',
+        ],
+        pathGroups: [
+          {
+            pattern: 'react',
+            group: 'builtin',
+            position: 'after',
+          },
+          {
+            pattern: '@redwoodjs/**',
+            group: 'external',
+            position: 'after',
+          },
+          {
+            // Matches...
+            // - src/directives/**/*.{js,ts}
+            // - src/services/**/*.{js,ts}
+            // - src/graphql/**/*.sdl.{js,ts}
+            //
+            // Uses https://github.com/isaacs/minimatch under the hood
+            // See https://github.com/isaacs/node-glob#glob-primer for syntax
+            pattern: 'src/*/**/*.?(sdl.){js,ts}',
+            patternOptions: {
+              nobrace: true,
+              noglobstar: true,
+            },
+            group: 'internal',
+            position: 'before',
+          },
+        ],
+        alphabetize: {
+          order: 'asc',
+          caseInsensitive: true,
+        },
       },
     ],
-    'react/display-name': 'off',
-    'react-hooks/rules-of-hooks': 'error',
-    'react-hooks/exhaustive-deps': 'warn',
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          {
+            group: ['$api/*'],
+            message:
+              'Importing from $api is only supported in *.routeHooks.{js,ts} files',
+          },
+        ],
+      },
+    ],
   },
   overrides: [
     {
+      files: ['*.tsx', '*.js', '*.jsx'],
+      excludedFiles: ['api/src/**'],
+      rules: {
+        'react-hooks/rules-of-hooks': 'error',
+      },
+    },
+    {
       files: ['*.ts', '*.tsx'],
       parser: '@typescript-eslint/parser',
-      extends: [
-        'plugin:@typescript-eslint/recommended',
-        'prettier/@typescript-eslint',
-      ],
+      extends: ['plugin:@typescript-eslint/recommended', 'prettier'],
       rules: {
-        '@typescript-eslint/no-var-requires': 'off',
-        '@typescript-eslint/explicit-function-return-type': 'off',
-        '@typescript-eslint/no-empty-interface': 'off',
-        '@typescript-eslint/explicit-module-boundary-types': 'off',
-        '@typescript-eslint/ban-types': 'warn',
-        'no-empty-function': 'off',
+        // TODO: look into enabling these eventually
         '@typescript-eslint/no-empty-function': 'off',
-        camelcase: 'off',
-        '@typescript-eslint/camelcase': 'off',
-        'no-use-before-define': 'off',
-        '@typescript-eslint/no-use-before-define': 'off',
+        '@typescript-eslint/prefer-function-type': 'off',
+
+        // Specific 'recommended' rules we alter
+        '@typescript-eslint/no-var-requires': 'off',
+        '@typescript-eslint/no-require-imports': 'off',
+        '@typescript-eslint/no-empty-object-type': 'off',
         '@typescript-eslint/no-unused-vars': [
           'error',
           { varsIgnorePattern: '^_', argsIgnorePattern: '^_' },
@@ -114,6 +189,13 @@ module.exports = {
         commonjs: true,
         jest: true,
       },
+    },
+    {
+      files: [
+        'web/src/**/*.routeHooks.{js,ts}',
+        'web/src/entry.server.{jsx,tsx}',
+      ],
+      rules: { 'no-restricted-imports': 'off' },
     },
   ],
 }

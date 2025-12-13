@@ -1,72 +1,98 @@
-import React, { ReactElement, ReactNode } from 'react'
+import type { ReactElement, ReactNode } from 'react'
+import React from 'react'
 
-import { Redirect } from './links'
-import { useLocation } from './location'
-import { usePrivate } from './private-context'
-import { isRoute } from './router'
-import { useRouterState } from './router-context'
-import { flattenAll, matchPath } from './util'
-
-type WrapperType<WTProps> = (
-  props: WTProps & { children: ReactNode }
+export type WrapperType<WTProps> = (
+  props: Omit<WTProps, 'wrap' | 'children'> & {
+    children: ReactNode
+  },
 ) => ReactElement | null
 
-type ReduceType = ReactElement | undefined
-
 type SetProps<P> = P & {
-  wrap: WrapperType<P> | WrapperType<P>[]
+  /**
+   * P is the interface for the props that are forwarded to the wrapper
+   * components. TypeScript will most likely infer this for you, but if you
+   * need to you can specify it yourself in your JSX like so:
+   *   <Set<{theme: string}> wrap={ThemableLayout} theme="dark">
+   */
+  wrap?: WrapperType<P> | WrapperType<P>[]
+  /**
+   *`Routes` nested in a `<Set>` with `private` specified require
+   * authentication. When a user is not authenticated and attempts to visit
+   * the wrapped route they will be redirected to `unauthenticated` route.
+   *
+   * @deprecated Please use `<PrivateSet>` instead
+   */
+  private?: boolean
+  /**
+   * The page name where a user will be redirected when not authenticated
+   *
+   * @deprecated Please use `<PrivateSet>` instead and specify this prop there
+   */
+  unauthenticated?: string
+  /**
+   * Route is permitted when authenticated and user has any of the provided
+   * roles such as "admin" or ["admin", "editor"]
+   */
+  roles?: string | string[]
+  /** Prerender all pages in the set */
+  prerender?: boolean
   children: ReactNode
+  /** Loading state for auth to distinguish with whileLoading */
+  whileLoadingAuth?: () => ReactElement | null
+  whileLoadingPage?: () => ReactElement | null
 }
 
+/**
+ * TypeScript will often infer the type of the props you can forward to the
+ * wrappers for you, but if you need to you can specify it yourself in your
+ * JSX like so:
+ *   <Set<{theme: string}> wrap={ThemeableLayout} theme="dark">
+ */
 export function Set<WrapperProps>(props: SetProps<WrapperProps>) {
-  const { wrap, children, ...rest } = props
-  const routerState = useRouterState()
-  const location = useLocation()
-  const { loading } = routerState.useAuth()
-  const { isPrivate, unauthorized, unauthenticated } = usePrivate()
+  // @MARK: Virtual Component, this is actually never rendered
+  // See analyzeRoutes in utils.tsx, inside the isSetNode block
+  return <>{props.children}</>
+}
 
-  const wrappers = Array.isArray(wrap) ? wrap : [wrap] // slap the wrappers in an array
-  const flatChildArray = flattenAll(children)
-  const routes = flatChildArray
-    .filter(isRoute)
-    .filter((r) => typeof r.props.path !== 'undefined')
-
-  for (const route of routes) {
-    const path = route.props.path as string
-
-    const { match } = matchPath(path, location.pathname, routerState.paramTypes)
-    if (match) {
-      if (isPrivate && unauthorized()) {
-        if (loading) {
-          return route.props?.whileLoading?.() || null
-        } else {
-          const currentLocation =
-            global.location.pathname +
-            encodeURIComponent(global.location.search)
-
-          const unauthenticatedRoute = routerState.routes.filter(
-            ({ name }) => unauthenticated === name
-          )[0]
-
-          return (
-            <Redirect
-              to={`${unauthenticatedRoute.path}?redirectTo=${currentLocation}`}
-            />
-          )
-        }
-      }
-
-      // Expand and nest the wrapped elements.
-      return (
-        wrappers.reduceRight<ReduceType>((acc, wrapper) => {
-          return React.createElement(wrapper, {
-            ...rest,
-            children: acc ? acc : children,
-          } as SetProps<WrapperProps>)
-        }, undefined) || null
-      )
-    }
+type PrivateSetProps<P> = P &
+  Omit<SetProps<P>, 'private' | 'unauthenticated'> & {
+    /** The page name where a user will be redirected when not authenticated */
+    unauthenticated: string
   }
-  // No match, no render.
-  return null
+
+/** @deprecated Please use `<PrivateSet>` instead */
+export function Private<WrapperProps>(props: PrivateSetProps<WrapperProps>) {
+  // @MARK Virtual Component, this is actually never rendered
+  // See analyzeRoutes in utils.tsx, inside the isSetNode block
+  return <>{props.children}</>
+}
+
+export function PrivateSet<WrapperProps>(props: PrivateSetProps<WrapperProps>) {
+  // @MARK Virtual Component, this is actually never rendered
+  // See analyzeRoutes in utils.tsx, inside the isSetNode block
+  return <>{props.children}</>
+}
+
+export const isSetNode = (
+  node: ReactNode,
+): node is ReactElement<SetProps<any>> => {
+  return (
+    React.isValidElement(node) &&
+    (node.type === Set || node.type === PrivateSet || node.type === Private) &&
+    // Don't even bother including Sets without children. They're useless.
+    node.props.children
+  )
+}
+
+export const isPrivateSetNode = (
+  node: ReactNode,
+): node is ReactElement<PrivateSetProps<unknown>> => {
+  return React.isValidElement(node) && node.type === PrivateSet
+}
+
+// Only identifies <Private> nodes, not <Set private> nodes
+export const isPrivateNode = (
+  node: ReactNode,
+): node is ReactElement<SetProps<any>> => {
+  return React.isValidElement(node) && node.type === Private
 }

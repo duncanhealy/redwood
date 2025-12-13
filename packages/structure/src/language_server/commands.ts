@@ -1,4 +1,4 @@
-import { ExecuteCommandOptions } from 'vscode-languageserver'
+import type { ExecuteCommandOptions } from 'vscode-languageserver'
 
 import { command_builder } from '../interactive_cli/command_builder'
 import { redwood_gen_dry_run as dry_run } from '../interactive_cli/dry_run'
@@ -12,7 +12,7 @@ import {
   WorkspaceEdit_fromFileSet,
 } from '../x/vscode-languageserver-types'
 
-import { RWLanguageServer } from './RWLanguageServer'
+import type { RWLanguageServer } from './RWLanguageServer'
 
 export const redwoodjs_commands = {
   'redwoodjs.cli': 'redwoodjs.cli',
@@ -42,13 +42,8 @@ export class CommandsManager {
 
   // --- start command implementations
   private async command__cli(cmdString?: string, cwd?: string) {
-    const {
-      vscodeWindowMethods,
-      host,
-      projectRoot,
-      connection,
-      documents,
-    } = this.server
+    const { vscodeWindowMethods, host, projectRoot, connection, documents } =
+      this.server
     cwd = cwd ?? projectRoot
     if (!cwd) {
       return
@@ -61,7 +56,7 @@ export class CommandsManager {
       cmd.processed.startsWith('storybook --open')
     ) {
       vscodeWindowMethods.showInformationMessage(
-        'not implemented yet: $ redwood ' + cmd.processed
+        'not implemented yet: $ redwood ' + cmd.processed,
       )
       return
     }

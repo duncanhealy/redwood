@@ -1,7 +1,8 @@
-import Listr from 'listr'
+import { Listr } from 'listr2'
 
-import { deleteFilesTask } from 'src/lib'
-import c from 'src/lib/colors'
+import { recordTelemetryAttributes } from '@redwoodjs/cli-helpers'
+
+import { deleteFilesTask } from '../../lib'
 
 const tasks = ({ componentName, filesFn, name }) =>
   new Listr(
@@ -9,15 +10,19 @@ const tasks = ({ componentName, filesFn, name }) =>
       {
         title: `Destroying ${componentName} files...`,
         task: async () => {
-          const f = await filesFn({ name })
+          const f = await filesFn({ name, stories: true, tests: true })
           return deleteFilesTask(f)
         },
       },
     ],
-    { collapse: false, exitOnError: true }
+    { rendererOptions: { collapseSubtasks: false }, exitOnError: true },
   )
 
-export const createYargsForComponentDestroy = ({ componentName, filesFn }) => {
+export const createYargsForComponentDestroy = ({
+  componentName,
+  preTasksFn = (options) => options,
+  filesFn,
+}) => {
   return {
     command: `${componentName} <name>`,
     description: `Destroy a ${componentName} component`,
@@ -27,14 +32,12 @@ export const createYargsForComponentDestroy = ({ componentName, filesFn }) => {
         type: 'string',
       })
     },
-    handler: async ({ name }) => {
-      const t = tasks({ componentName, filesFn, name })
-
-      try {
-        await t.run()
-      } catch (e) {
-        console.log(c.error(e.message))
-      }
+    handler: async (options) => {
+      recordTelemetryAttributes({
+        command: `destroy ${componentName}`,
+      })
+      options = await preTasksFn({ ...options, isDestroyer: true })
+      await tasks({ componentName, filesFn, name: options.name }).run()
     },
     tasks,
   }

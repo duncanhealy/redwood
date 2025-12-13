@@ -1,8 +1,10 @@
-import Listr from 'listr'
+import { Listr } from 'listr2'
 
-import { deleteFilesTask } from 'src/lib'
-import c from 'src/lib/colors'
+import { recordTelemetryAttributes } from '@redwoodjs/cli-helpers'
 
+import { deleteFilesTask } from '../../../lib'
+import c from '../../../lib/colors'
+import { verifyModelName } from '../../../lib/schemaHelpers'
 import { files } from '../../generate/sdl/sdl'
 
 export const command = 'sdl <model>'
@@ -27,14 +29,16 @@ export const tasks = ({ model }) =>
         },
       },
     ],
-    { collapse: false, exitOnError: true }
+    { rendererOptions: { collapseSubtasks: false }, exitOnError: true },
   )
 
 export const handler = async ({ model }) => {
-  const t = tasks({ model })
-
+  recordTelemetryAttributes({
+    command: 'destroy sdl',
+  })
   try {
-    await t.run()
+    const { name } = await verifyModelName({ name: model, isDestroyer: true })
+    await tasks({ model: name }).run()
   } catch (e) {
     console.log(c.error(e.message))
   }

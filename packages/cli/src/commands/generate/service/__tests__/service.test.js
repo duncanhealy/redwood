@@ -1,12 +1,23 @@
-global.__dirname = __dirname
+globalThis.__dirname = __dirname
 import path from 'path'
 
+import { vi, beforeAll, afterAll, test, expect, describe, it } from 'vitest'
+import yargs from 'yargs/yargs'
+
 // Load mocks
-import 'src/lib/test'
+import '../../../../lib/test'
 
-import { getDefaultArgs } from 'src/lib'
-
+import { getDefaultArgs } from '../../../../lib'
 import * as service from '../service'
+
+beforeAll(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2022-09-30T09:50:00.000Z'))
+})
+
+afterAll(() => {
+  vi.useRealTimers()
+})
 
 const extensionForBaseArgs = (baseArgs) =>
   baseArgs && baseArgs.typescript ? 'ts' : 'js'
@@ -32,9 +43,9 @@ const itCreatesASingleWordServiceFile = (baseArgs) => {
     expect(
       files[
         path.normalize(
-          `/path/to/project/api/src/services/users/users.${extension}`
+          `/path/to/project/api/src/services/users/users.${extension}`,
         )
-      ]
+      ],
     ).toMatchSnapshot()
   })
 }
@@ -49,9 +60,9 @@ const itCreatesASingleWordServiceTestFile = (baseArgs) => {
     expect(
       files[
         path.normalize(
-          `/path/to/project/api/src/services/users/users.test.${extension}`
+          `/path/to/project/api/src/services/users/users.test.${extension}`,
         )
-      ]
+      ],
     ).toMatchSnapshot()
   })
 }
@@ -64,10 +75,11 @@ const itCreatesASingleWordServiceScenarioFile = (baseArgs) => {
     })
     const extension = extensionForBaseArgs(baseArgs)
     const filePath = path.normalize(
-      `/path/to/project/api/src/services/users/users.scenarios.${extension}`
+      `/path/to/project/api/src/services/users/users.scenarios.${extension}`,
     )
 
     expect(Object.keys(files)).toContain(filePath)
+    expect(files[filePath]).toMatchSnapshot()
   })
 }
 
@@ -76,15 +88,16 @@ const itCreatesAMultiWordServiceFile = (baseArgs) => {
     const files = await service.files({
       ...baseArgs,
       name: 'UserProfile',
+      crud: false,
     })
     const extension = extensionForBaseArgs(baseArgs)
 
     expect(
       files[
         path.normalize(
-          `/path/to/project/api/src/services/userProfiles/userProfiles.${extension}`
+          `/path/to/project/api/src/services/userProfiles/userProfiles.${extension}`,
         )
-      ]
+      ],
     ).toMatchSnapshot()
   })
 }
@@ -94,15 +107,16 @@ const itCreatesAMultiWordServiceTestFile = (baseArgs) => {
     const files = await service.files({
       ...baseArgs,
       name: 'UserProfile',
+      crud: false,
     })
     const extension = extensionForBaseArgs(baseArgs)
 
     expect(
       files[
         path.normalize(
-          `/path/to/project/api/src/services/userProfiles/userProfiles.test.${extension}`
+          `/path/to/project/api/src/services/userProfiles/userProfiles.test.${extension}`,
         )
-      ]
+      ],
     ).toMatchSnapshot()
   })
 }
@@ -119,10 +133,13 @@ const itCreatesASingleWordServiceFileWithCRUDActions = (baseArgs) => {
     expect(
       files[
         path.normalize(
-          `/path/to/project/api/src/services/posts/posts.${extension}`
+          `/path/to/project/api/src/services/posts/posts.${extension}`,
         )
-      ]
+      ],
     ).toMatchSnapshot()
+
+    // TODO
+    // Mock Date, so we can take snapshots of tests and scenarios
   })
 }
 
@@ -135,7 +152,7 @@ const itCreatesASingleWordServiceTestFileWithCRUDActions = (baseArgs) => {
     })
     const extension = extensionForBaseArgs(baseArgs)
     const filePath = path.normalize(
-      `/path/to/project/api/src/services/posts/posts.test.${extension}`
+      `/path/to/project/api/src/services/posts/posts.test.${extension}`,
     )
 
     expect(Object.keys(files)).toContain(filePath)
@@ -151,12 +168,13 @@ const itCreatesAMultiWordServiceFileWithCRUDActions = (baseArgs) => {
     })
     const extension = extensionForBaseArgs(baseArgs)
     const filePath = path.normalize(
-      `/path/to/project/api/src/services/userProfiles/userProfiles.${extension}`
+      `/path/to/project/api/src/services/userProfiles/userProfiles.${extension}`,
     )
 
     expect(Object.keys(files)).toContain(filePath)
   })
 }
+
 const itCreatesAMultiWordServiceTestFileWithCRUDActions = (baseArgs) => {
   test('creates a multi word service test file with CRUD actions', async () => {
     const files = await service.files({
@@ -166,10 +184,31 @@ const itCreatesAMultiWordServiceTestFileWithCRUDActions = (baseArgs) => {
     })
     const extension = extensionForBaseArgs(baseArgs)
     const filePath = path.normalize(
-      `/path/to/project/api/src/services/userProfiles/userProfiles.test.${extension}`
+      `/path/to/project/api/src/services/userProfiles/userProfiles.test.${extension}`,
     )
 
     expect(Object.keys(files)).toContain(filePath)
+  })
+}
+
+const itCreatesAMultiWordServiceTestFileWithMultipleScalarTypes = (
+  baseArgs,
+) => {
+  test('creates a multi word service test file with multiple scalar types', async () => {
+    const files = await service.files({
+      ...baseArgs,
+      name: 'ScalarType',
+      crud: true,
+    })
+    const extension = extensionForBaseArgs(baseArgs)
+
+    expect(
+      files[
+        path.normalize(
+          `/path/to/project/api/src/services/scalarTypes/scalarTypes.test.${extension}`,
+        )
+      ],
+    ).toMatchSnapshot()
   })
 }
 
@@ -179,15 +218,16 @@ const itCreatesASingleWordServiceFileWithAHasManyRelation = (baseArgs) => {
       ...baseArgs,
       name: 'User',
       relations: ['userProfiles'],
+      crud: false,
     })
     const extension = extensionForBaseArgs(baseArgs)
 
     expect(
       files[
         path.normalize(
-          `/path/to/project/api/src/services/users/users.${extension}`
+          `/path/to/project/api/src/services/users/users.${extension}`,
         )
-      ]
+      ],
     ).toMatchSnapshot()
   })
 }
@@ -198,15 +238,16 @@ const itCreatesASingleWordServiceFileWithABelongsToRelation = (baseArgs) => {
       ...baseArgs,
       name: 'User',
       relations: ['identity'],
+      crud: false,
     })
     const extension = extensionForBaseArgs(baseArgs)
 
     expect(
       files[
         path.normalize(
-          `/path/to/project/api/src/services/users/users.${extension}`
+          `/path/to/project/api/src/services/users/users.${extension}`,
         )
-      ]
+      ],
     ).toMatchSnapshot()
   })
 }
@@ -217,21 +258,51 @@ const itCreatesASingleWordServiceFileWithMultipleRelations = (baseArgs) => {
       ...baseArgs,
       name: 'User',
       relations: ['userProfiles', 'identity'],
+      crud: false,
     })
     const extension = extensionForBaseArgs(baseArgs)
 
     expect(
       files[
         path.normalize(
-          `/path/to/project/api/src/services/users/users.${extension}`
+          `/path/to/project/api/src/services/users/users.${extension}`,
         )
-      ]
+      ],
     ).toMatchSnapshot()
   })
 }
 
+const itCreatesAMultiWordServiceTestFileWithCRUDAndOnlyForeignKeyRequired = (
+  baseArgs,
+) => {
+  test('creates a multi word service test file with crud actions and only foreign as mandatory field', async () => {
+    const files = await service.files({
+      ...baseArgs,
+      name: 'Transaction',
+      crud: true,
+    })
+    const extension = extensionForBaseArgs(baseArgs)
+
+    expect(
+      files[
+        path.normalize(
+          `/path/to/project/api/src/services/transactions/transactions.test.${extension}`,
+        )
+      ],
+    ).toMatchSnapshot()
+  })
+}
+
+test('keeps Service in name', () => {
+  const { name } = yargs()
+    .command('service <name>', false, service.builder)
+    .parse('service BazingaService')
+
+  expect(name).toEqual('BazingaService')
+})
+
 describe('in javascript mode', () => {
-  const baseArgs = getDefaultArgs(service.defaults)
+  const baseArgs = { ...getDefaultArgs(service.defaults), tests: true }
 
   itReturnsExactly3Files(baseArgs)
   itCreatesASingleWordServiceFile(baseArgs)
@@ -241,15 +312,21 @@ describe('in javascript mode', () => {
   itCreatesAMultiWordServiceTestFile(baseArgs)
   itCreatesASingleWordServiceFileWithCRUDActions(baseArgs)
   itCreatesASingleWordServiceTestFileWithCRUDActions(baseArgs)
+  itCreatesAMultiWordServiceTestFileWithMultipleScalarTypes(baseArgs)
   itCreatesAMultiWordServiceFileWithCRUDActions(baseArgs)
   itCreatesAMultiWordServiceTestFileWithCRUDActions(baseArgs)
   itCreatesASingleWordServiceFileWithAHasManyRelation(baseArgs)
   itCreatesASingleWordServiceFileWithABelongsToRelation(baseArgs)
   itCreatesASingleWordServiceFileWithMultipleRelations(baseArgs)
+  itCreatesAMultiWordServiceTestFileWithCRUDAndOnlyForeignKeyRequired(baseArgs)
 })
 
 describe('in typescript mode', () => {
-  const baseArgs = { ...getDefaultArgs(service.defaults), typescript: true }
+  const baseArgs = {
+    ...getDefaultArgs(service.defaults),
+    typescript: true,
+    tests: true,
+  }
 
   itReturnsExactly3Files(baseArgs)
   itCreatesASingleWordServiceFile(baseArgs)
@@ -258,12 +335,14 @@ describe('in typescript mode', () => {
   itCreatesAMultiWordServiceFile(baseArgs)
   itCreatesAMultiWordServiceTestFile(baseArgs)
   itCreatesASingleWordServiceFileWithCRUDActions(baseArgs)
+  itCreatesAMultiWordServiceTestFileWithMultipleScalarTypes(baseArgs)
   itCreatesASingleWordServiceTestFileWithCRUDActions(baseArgs)
   itCreatesAMultiWordServiceFileWithCRUDActions(baseArgs)
   itCreatesAMultiWordServiceTestFileWithCRUDActions(baseArgs)
   itCreatesASingleWordServiceFileWithAHasManyRelation(baseArgs)
   itCreatesASingleWordServiceFileWithABelongsToRelation(baseArgs)
   itCreatesASingleWordServiceFileWithMultipleRelations(baseArgs)
+  itCreatesAMultiWordServiceTestFileWithCRUDAndOnlyForeignKeyRequired(baseArgs)
 })
 
 describe('parseSchema', () => {
@@ -277,7 +356,7 @@ describe('parseSchema', () => {
     const { scalarFields } = await service.parseSchema('User')
 
     expect(
-      scalarFields.find((field) => field.name === 'email')
+      scalarFields.find((field) => field.name === 'email'),
     ).not.toBeUndefined()
   })
 
@@ -291,7 +370,7 @@ describe('parseSchema', () => {
     const { scalarFields } = await service.parseSchema('User')
 
     expect(
-      scalarFields.find((field) => field.name === 'isAdmin')
+      scalarFields.find((field) => field.name === 'isAdmin'),
     ).toBeUndefined()
   })
 
@@ -299,7 +378,7 @@ describe('parseSchema', () => {
     const { scalarFields } = await service.parseSchema('UserProfile')
 
     expect(
-      scalarFields.find((field) => field.name === 'userId')
+      scalarFields.find((field) => field.name === 'userId'),
     ).not.toBeUndefined()
   })
 
@@ -356,12 +435,30 @@ describe('parseSchema', () => {
 describe('fieldsToScenario', () => {
   it('includes scalar fields', async () => {
     const output = await service.fieldsToScenario(
-      [{ name: 'email', type: 'String' }],
+      [
+        { name: 'email', type: 'String' },
+        { name: 'date', type: 'DateTime' },
+        { name: 'bigInt', type: 'BigInt' },
+        { name: 'integer', type: 'Int' },
+        { name: 'boolean', type: 'Boolean' },
+      ],
       {},
-      []
+      [],
     )
 
-    expect(output).toEqual({ email: 'String' })
+    expect(output.email).toEqual('String')
+
+    expect(output.date instanceof Date).toBe(true)
+    expect(!isNaN(output.date)).toBe(true)
+
+    expect(output.integer).toEqual(parseInt(output.integer))
+    expect(typeof output.integer).toBe('number')
+
+    expect(output.boolean).toEqual(true)
+    expect(typeof output.boolean).toBe('boolean')
+
+    expect(output.bigInt).toMatch(/^\d+n$/)
+    expect(typeof output.bigInt).toBe('string') // pseudo-bigint
   })
 
   it('includes dependent relationships', async () => {
@@ -372,7 +469,7 @@ describe('fieldsToScenario', () => {
         { name: 'userId', type: 'Integer' },
       ],
       { user: { foreignKey: 'userId', type: 'User' } },
-      ['userId']
+      ['userId'],
     )
 
     expect(Object.keys(output)).toEqual(['title', 'user'])
@@ -389,7 +486,7 @@ describe('fieldsToScenario', () => {
       ],
       // note that relationship name is "author" but datatype is "User"
       { author: { foreignKey: 'authorId', type: 'User' } },
-      ['userId']
+      ['userId'],
     )
 
     expect(Object.keys(output)).toEqual(['title', 'author'])
@@ -399,7 +496,10 @@ describe('fieldsToScenario', () => {
 })
 
 test("doesn't include test file when --tests is set to false", async () => {
-  const baseArgs = { ...getDefaultArgs(service.defaults), javascript: true }
+  const baseArgs = {
+    ...getDefaultArgs(service.defaults),
+    javascript: true,
+  }
 
   const files = await service.files({
     ...baseArgs,

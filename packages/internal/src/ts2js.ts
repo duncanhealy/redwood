@@ -2,10 +2,10 @@ import fs from 'fs'
 import path from 'path'
 
 import { transform } from '@babel/core'
-import glob from 'glob'
+import fg from 'fast-glob'
 import { format } from 'prettier'
 
-import { getPaths } from './paths'
+import { getPaths } from '@redwoodjs/project-config'
 
 /**
  * Converts all the TypeScript files in the `api` and `web` sides to JavaScript.
@@ -14,41 +14,74 @@ import { getPaths } from './paths'
  */
 export const convertTsProjectToJs = (cwd = getPaths().base) => {
   const files = typeScriptSourceFiles(cwd)
+  convertTsFilesToJs(cwd, files)
+}
+
+/**
+ * Converts all the TypeScript files in the `api` and `web` sides to JavaScript.
+ *
+ * @param {string} cwd - The base path to the project.
+ */
+export const convertTsScriptsToJs = (cwd = getPaths().base) => {
+  const files = typeScriptSourceFiles(cwd, 'scripts/*.{ts,tsx}')
+  convertTsFilesToJs(cwd, files)
+}
+
+/**
+ * Converts TypeScript files to JavaScript.
+ *
+ * @param {string} cwd - Current directory
+ * @param {string[]} files - Collection of files to convert
+ */
+export const convertTsFilesToJs = async (cwd: string, files: string[]) => {
+  if (files.length === 0) {
+    console.log('No TypeScript files found to convert to JS in this project.')
+  }
   for (const f of files) {
-    const code = transformTSToJS(f)
+    const code = await transformTSToJS(f)
     if (code) {
       fs.writeFileSync(
-        path.join(cwd, f.replace('.tsx', '.js').replace('.ts', '.js')),
+        path.join(cwd, f.replace('.tsx', '.jsx').replace('.ts', '.js')),
         code,
-        'utf8'
+        'utf8',
       )
       fs.unlinkSync(path.join(cwd, f))
     }
   }
 
-  try {
+  if (fs.existsSync(path.join(cwd, 'api/tsconfig.json'))) {
     fs.renameSync(
       path.join(cwd, 'api/tsconfig.json'),
-      path.join(cwd, 'api/jsconfig.json')
+      path.join(cwd, 'api/jsconfig.json'),
     )
+  }
+  if (fs.existsSync(path.join(cwd, 'web/tsconfig.json'))) {
     fs.renameSync(
       path.join(cwd, 'web/tsconfig.json'),
-      path.join(cwd, 'web/jsconfig.json')
+      path.join(cwd, 'web/jsconfig.json'),
     )
-  } catch (e) {
-    // I want the user to be able to run this command multiple times.
-    console.error(e)
+  }
+  if (fs.existsSync(path.join(cwd, 'scripts/tsconfig.json'))) {
+    fs.renameSync(
+      path.join(cwd, 'scripts/tsconfig.json'),
+      path.join(cwd, 'scripts/jsconfig.json'),
+    )
   }
 }
 
 /**
  * Get all the source code from a Redwood project
  */
-export const typeScriptSourceFiles = (cwd: string) => {
+export const typeScriptSourceFiles = (
+  cwd: string,
+  globPattern = '{api,web}/src/**/*.{ts,tsx}',
+) => {
+  console.log(globPattern)
   // TODO: When sides are expanded read the `api` and `web` string instead
   // of hard-coding them.
-  return glob.sync('{api,web}/src/**/*.{ts,tsx}', {
+  return fg.sync(globPattern, {
     cwd,
+    ignore: ['node_modules'],
   })
 }
 
@@ -84,10 +117,13 @@ export const transformTSToJS = (file: string) => {
   return prettify(result.code, filename.replace(/\.ts$/, '.js'))
 }
 
-export const prettierConfig = () => {
+export const getPrettierConfig = async () => {
   try {
-    return require(path.join(getPaths().base, 'prettier.config.js'))
-  } catch (e) {
+    const { default: prettierConfig } = await import(
+      `file://${path.join(getPaths().base, 'prettier.config.js')}`
+    )
+    return prettierConfig
+  } catch {
     return undefined
   }
 }
@@ -119,15 +155,17 @@ const prettierParser = (filename: string) => {
  * @param {string} code
  * @param {string} filename
  */
-export const prettify = (code: string, filename: string) => {
+export const prettify = async (code: string, filename: string) => {
   const parser = prettierParser(filename)
   // Return unformatted code if we could not determine the parser.
   if (typeof parser === 'undefined') {
     return code
   }
 
+  const prettierConfig = await getPrettierConfig()
+
   return format(code, {
-    ...prettierConfig(),
+    ...prettierConfig,
     parser,
   })
 }

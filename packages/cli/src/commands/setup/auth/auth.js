@@ -1,331 +1,309 @@
-import fs from 'fs'
 import path from 'path'
 
 import execa from 'execa'
-import Listr from 'listr'
+import fs from 'fs-extra'
 import terminalLink from 'terminal-link'
 
-import { resolveFile } from '@redwoodjs/internal'
+import {
+  recordTelemetryAttributes,
+  standardAuthBuilder,
+} from '@redwoodjs/cli-helpers'
 
-import { getPaths, writeFilesTask } from 'src/lib'
-import c from 'src/lib/colors'
-
-const AUTH_PROVIDER_IMPORT = `import { AuthProvider } from '@redwoodjs/auth'`
-
-const OUTPUT_PATH = path.join(getPaths().api.lib, 'auth.js')
-
-const getGraphqlPath = () =>
-  resolveFile(path.join(getPaths().api.functions, 'graphql'))
-
-const getWebAppPath = () => getPaths().web.app
-
-const getSupportedProviders = () =>
-  fs
-    .readdirSync(path.resolve(__dirname, 'providers'))
-    .map((file) => path.basename(file, '.js'))
-    .filter((file) => file !== 'README.md')
-
-const getTemplates = () =>
-  fs
-    .readdirSync(path.resolve(__dirname, 'templates'))
-    .reduce((templates, file) => {
-      if (file === 'auth.js.template') {
-        return {
-          ...templates,
-          base: path.resolve(__dirname, 'templates', file),
-        }
-      } else {
-        const provider = file.replace('.auth.js.template', '')
-        return {
-          ...templates,
-          [provider]: path.resolve(__dirname, 'templates', file),
-        }
-      }
-    }, {})
-
-// returns the content of App.{js,tsx} with import statements added
-const addWebImports = (content, imports) => {
-  return `${AUTH_PROVIDER_IMPORT}\n` + imports.join('\n') + '\n' + content
-}
-
-// returns the content of App.{js,tsx} with init lines added
-const addWebInit = (content, init) => {
-  return content.replace(
-    'const App = () => (',
-    `${init}\n\nconst App = () => (`
-  )
-}
-
-// returns the content of App.{js,tsx} with <AuthProvider> added
-const addWebRender = (content, authProvider) => {
-  const [_, indent, redwoodApolloProvider] = content.match(
-    /(\s+)(<RedwoodApolloProvider>.*<\/RedwoodApolloProvider>)/s
-  )
-
-  const redwoodApolloProviderLines = redwoodApolloProvider
-    .split('\n')
-    .map((line) => {
-      return '  ' + line
-    })
-
-  const customRenderOpen = (authProvider.render || []).reduce(
-    (acc, component) => acc + indent + `<${component}>`,
-    ''
-  )
-
-  const customRenderClose = (authProvider.render || []).reduce(
-    (acc, component) => indent + `</${component}>` + acc,
-    ''
-  )
-
-  const renderContent =
-    customRenderOpen +
-    indent +
-    `<AuthProvider client={${authProvider.client}} type="${authProvider.type}">` +
-    indent +
-    redwoodApolloProviderLines.join('\n') +
-    indent +
-    `</AuthProvider>` +
-    customRenderClose
-
-  return content.replace(
-    /\s+<RedwoodApolloProvider>.*<\/RedwoodApolloProvider>/s,
-    renderContent
-  )
-}
-
-// returns the content of App.{js,tsx} with <AuthProvider> updated
-const updateWebRender = (content, authProvider) => {
-  const renderContent = `<AuthProvider client={${authProvider.client}} type="${authProvider.type}">`
-  return content.replace(/<AuthProvider client={.*} type=".*">/s, renderContent)
-}
-
-// returns the content of App.{js,tsx} without the old auth import
-const removeOldWebImports = (content, imports) => {
-  return content.replace(`${AUTH_PROVIDER_IMPORT}\n` + imports.join('\n'), '')
-}
-
-// returns the content of App.{js,tsx} without the old auth init
-const removeOldWebInit = (content, init) => {
-  return content.replace(init, '')
-}
-
-// returns content with old auth provider removes
-const removeOldAuthProvider = async (content) => {
-  // get the current auth provider
-  const [_, currentAuthProvider] = content.match(
-    /<AuthProvider client={.*} type="(.*)">/s
-  )
-
-  let oldAuthProvider
-  try {
-    oldAuthProvider = await import(`./providers/${currentAuthProvider}`)
-  } catch (e) {
-    throw new Error('Could not replace existing auth provider init')
-  }
-
-  content = removeOldWebImports(content, oldAuthProvider.config.imports)
-  content = removeOldWebInit(content, oldAuthProvider.config.init)
-
-  return content
-}
-
-// check to make sure AuthProvider doesn't exist
-const checkAuthProviderExists = () => {
-  const content = fs.readFileSync(getWebAppPath()).toString()
-
-  if (content.includes(AUTH_PROVIDER_IMPORT)) {
-    throw new Error(
-      'Existing auth provider found.\nUse --force to override existing provider.'
-    )
-  }
-}
-
-// the files to create to support auth
-export const files = (provider) => {
-  const templates = getTemplates()
-  const template = templates[provider] ?? templates.base
-  return {
-    [OUTPUT_PATH]: fs.readFileSync(template).toString(),
-  }
-}
-
-// actually inserts the required config lines into App.{js,tsx}
-export const addConfigToApp = async (config, force) => {
-  const webAppPath = getWebAppPath()
-
-  let content = fs.readFileSync(webAppPath).toString()
-
-  // update existing AuthProvider if --force else add new AuthProvider
-  if (content.includes(AUTH_PROVIDER_IMPORT) && force) {
-    content = await removeOldAuthProvider(content)
-    content = updateWebRender(content, config.authProvider)
-  } else {
-    content = addWebRender(content, config.authProvider)
-  }
-
-  content = addWebImports(content, config.imports)
-  content = addWebInit(content, config.init)
-
-  fs.writeFileSync(webAppPath, content)
-}
-
-export const addApiConfig = () => {
-  const graphqlPath = getGraphqlPath()
-
-  let content = fs.readFileSync(graphqlPath).toString()
-
-  // default to an array to avoid destructure errors
-  const [_, hasAuthImport] =
-    content.match(/(import {.*} from 'src\/lib\/auth.*')/s) || []
-
-  if (!hasAuthImport) {
-    // add import statement
-    content = content.replace(
-      /^(.*services.*)$/m,
-      `$1\n\nimport { getCurrentUser } from 'src/lib/auth'`
-    )
-    // add object to handler
-    content = content.replace(
-      /^(\s*)(schema: makeMergedSchema)(.*)$/m,
-      `$1getCurrentUser,\n$1$2$3`
-    )
-    fs.writeFileSync(graphqlPath, content)
-  }
-}
-
-export const isProviderSupported = (provider) => {
-  return getSupportedProviders().indexOf(provider) !== -1
-}
-
-export const apiSrcDoesExist = () => {
-  return fs.existsSync(path.join(getPaths().api.src))
-}
-
-export const webIndexDoesExist = () => {
-  return fs.existsSync(getWebAppPath())
-}
-
-export const graphFunctionDoesExist = () => {
-  return fs.existsSync(getGraphqlPath())
-}
+import { getPaths } from '../../../lib/'
 
 export const command = 'auth <provider>'
-export const description = 'Generate an auth configuration'
-export const builder = (yargs) => {
+
+export const description = 'Set up an auth configuration'
+
+export async function builder(yargs) {
   yargs
-    .positional('provider', {
-      choices: getSupportedProviders(),
-      description: 'Auth provider to configure',
-      type: 'string',
-    })
-    .option('force', {
-      alias: 'f',
-      default: false,
-      description: 'Overwrite existing configuration',
-      type: 'boolean',
-    })
+    .demandCommand()
     .epilogue(
       `Also see the ${terminalLink(
         'Redwood CLI Reference',
-        'https://redwoodjs.com/reference/command-line-interface#generate-auth'
-      )}`
+        'https://redwoodjs.com/docs/cli-commands#setup-auth',
+      )}`,
+    )
+    // Command "redirects" for auth providers we used to support
+    .command(...redirectCommand('ethereum'))
+    .command(...redirectCommand('goTrue'))
+    .command(...redirectCommand('magicLink'))
+    .command(...redirectCommand('nhost'))
+    .command(...redirectCommand('okta'))
+    // Auth providers we support
+    .command(
+      'auth0',
+      'Set up auth for Auth0',
+      (yargs) => standardAuthBuilder(yargs),
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth auth0',
+          force: args.force,
+          verbose: args.verbose,
+        })
+        const handler = await getAuthHandler('@redwoodjs/auth-auth0-setup')
+        console.log()
+        handler(args)
+      },
+    )
+    .command(
+      ['azure-active-directory', 'azureActiveDirectory'],
+      'Set up auth for Azure Active Directory',
+      (yargs) => standardAuthBuilder(yargs),
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth azure-active-directory',
+          force: args.force,
+          verbose: args.verbose,
+        })
+        const handler = await getAuthHandler(
+          '@redwoodjs/auth-azure-active-directory-setup',
+        )
+        console.log()
+        handler(args)
+      },
+    )
+    .command(
+      'clerk',
+      'Set up auth for Clerk',
+      (yargs) => standardAuthBuilder(yargs),
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth clerk',
+          force: args.force,
+          verbose: args.verbose,
+        })
+        const handler = await getAuthHandler('@redwoodjs/auth-clerk-setup')
+        console.log()
+        handler(args)
+      },
+    )
+    .command(
+      'custom',
+      'Set up a custom auth provider',
+      (yargs) => standardAuthBuilder(yargs),
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth custom',
+          force: args.force,
+          verbose: args.verbose,
+        })
+        const handler = await getAuthHandler('@redwoodjs/auth-custom-setup')
+        console.log()
+        handler(args)
+      },
+    )
+    .command(
+      'dbAuth',
+      'Set up auth for dbAuth',
+      (yargs) => {
+        return standardAuthBuilder(yargs)
+          .option('webauthn', {
+            alias: 'w',
+            default: null,
+            description: 'Include WebAuthn support (TouchID/FaceID)',
+            type: 'boolean',
+          })
+          .option('createUserModel', {
+            alias: 'u',
+            default: null,
+            description: 'Create a User database model',
+            type: 'boolean',
+          })
+          .option('generateAuthPages', {
+            alias: 'g',
+            default: null,
+            description: 'Generate auth pages (login, signup, etc.)',
+            type: 'boolean',
+          })
+      },
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth dbAuth',
+          force: args.force,
+          verbose: args.verbose,
+          webauthn: args.webauthn,
+        })
+        const handler = await getAuthHandler('@redwoodjs/auth-dbauth-setup')
+        console.log()
+        handler(args)
+      },
+    )
+    .command(
+      'firebase',
+      'Set up auth for Firebase',
+      (yargs) => standardAuthBuilder(yargs),
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth firebase',
+          force: args.force,
+          verbose: args.verbose,
+        })
+        const handler = await getAuthHandler('@redwoodjs/auth-firebase-setup')
+        console.log()
+        handler(args)
+      },
+    )
+    .command(
+      'netlify',
+      'Set up auth for Netlify',
+      (yargs) => standardAuthBuilder(yargs),
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth netlify',
+          force: args.force,
+          verbose: args.verbose,
+        })
+        const handler = await getAuthHandler('@redwoodjs/auth-netlify-setup')
+        console.log()
+        handler(args)
+      },
+    )
+    .command(
+      'supabase',
+      'Set up auth for Supabase',
+      (yargs) => standardAuthBuilder(yargs),
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth supabase',
+          force: args.force,
+          verbose: args.verbose,
+        })
+        const handler = await getAuthHandler('@redwoodjs/auth-supabase-setup')
+        console.log()
+        handler(args)
+      },
+    )
+    .command(
+      'supertokens',
+      'Set up auth for SuperTokens',
+      (yargs) => standardAuthBuilder(yargs),
+      async (args) => {
+        recordTelemetryAttributes({
+          command: 'setup auth supertokens',
+          force: args.force,
+          verbose: args.verbose,
+        })
+        const handler = await getAuthHandler(
+          '@redwoodjs/auth-supertokens-setup',
+        )
+        console.log()
+        handler(args)
+      },
     )
 }
 
-export const handler = async ({ provider, force }) => {
-  const providerData = await import(`./providers/${provider}`)
+/**
+ * @param {string} provider
+ * @returns {[string, boolean, () => void, () => void]}
+ */
+function redirectCommand(provider) {
+  return [
+    provider,
+    false,
+    () => {},
+    () => {
+      recordTelemetryAttributes({
+        command: `setup auth ${provider}`,
+      })
+      console.log(getRedirectMessage(provider))
+    },
+  ]
+}
 
-  const tasks = new Listr(
-    [
-      {
-        title: 'Generating auth lib...',
-        task: (_ctx, task) => {
-          if (apiSrcDoesExist()) {
-            return writeFilesTask(files(provider), {
-              overwriteExisting: force,
-            })
-          } else {
-            task.skip('api/src not found, skipping')
-          }
-        },
-      },
-      {
-        title: 'Adding auth config to web...',
-        task: (_ctx, task) => {
-          if (webIndexDoesExist()) {
-            addConfigToApp(providerData.config, force)
-          } else {
-            task.skip('web/src/App.{js,tsx} not found, skipping')
-          }
-        },
-      },
-      {
-        title: 'Adding auth config to GraphQL API...',
-        task: (_ctx, task) => {
-          if (graphFunctionDoesExist()) {
-            addApiConfig()
-          } else {
-            task.skip('GraphQL function not found, skipping')
-          }
-        },
-      },
-      {
-        title: 'Adding required web packages...',
-        task: async () => {
-          if (!isProviderSupported(provider)) {
-            throw new Error(`Unknown auth provider '${provider}'`)
-          }
-          await execa('yarn', [
-            'workspace',
-            'web',
-            'add',
-            ...providerData.webPackages,
-            '@redwoodjs/auth',
-          ])
-        },
-      },
-      providerData.apiPackages.length > 0 && {
-        title: 'Adding required api packages...',
-        task: async () => {
-          if (!isProviderSupported(provider)) {
-            throw new Error(`Unknown auth provider '${provider}'`)
-          }
-          await execa('yarn', [
-            'workspace',
-            'api',
-            'add',
-            ...providerData.apiPackages,
-          ])
-        },
-      },
-      {
-        title: 'Installing packages...',
-        task: async () => {
-          await execa('yarn', ['install'])
-        },
-      },
-      {
-        title: 'One more thing...',
-        task: (_ctx, task) => {
-          task.title = `One more thing...\n\n   ${providerData.notes.join(
-            '\n   '
-          )}\n`
-        },
-      },
-    ].filter(Boolean),
-    { collapse: false }
-  )
+/**
+ * Get a stock message for one of our removed auth providers
+ * directing the user to the Custom Auth docs.
+ *
+ * @param {string} provider
+ */
+function getRedirectMessage(provider) {
+  return `${provider} is no longer supported out of the box. But you can still integrate it yourself with ${terminalLink(
+    'Custom Auth',
+    'https://redwoodjs.com/docs/canary/auth/custom',
+  )}`
+}
 
-  try {
-    // Don't throw existing provider error when --force exists
-    if (!force) {
-      checkAuthProviderExists()
+/**
+ * @param {string} module
+ */
+async function getAuthHandler(module) {
+  const packageJsonPath = require.resolve('@redwoodjs/cli/package.json')
+  let { version } = fs.readJSONSync(packageJsonPath)
+
+  if (!isInstalled(module)) {
+    // If the version includes a plus, like '4.0.0-rc.428+dd79f1726'
+    // (all @canary, @next, and @rc packages do), get rid of everything after the plus.
+    if (version.includes('+')) {
+      version = version.split('+')[0]
     }
 
-    await tasks.run()
-  } catch (e) {
-    console.error(c.error(e.message))
-    process.exit(e?.exitCode || 1)
+    let packument
+
+    try {
+      const packumentResponse = await fetch(
+        `https://registry.npmjs.org/${module}`,
+      )
+
+      packument = await packumentResponse.json()
+
+      if (packument.error) {
+        throw new Error(packument.error)
+      }
+    } catch (error) {
+      throw new Error(
+        `Couldn't fetch packument for ${module}: ${error.message}`,
+      )
+    }
+
+    const versionIsPublished = Object.keys(packument.versions).includes(version)
+
+    if (!versionIsPublished) {
+      // Fallback to canary. This is most likely because it's a new package
+      version = 'canary'
+    }
+
+    // We use `version` to make sure we install the same version of the auth
+    // setup package as the rest of the RW packages
+    await execa.command(`yarn add -D ${module}@${version}`, {
+      stdio: 'inherit',
+      cwd: getPaths().base,
+    })
   }
+
+  const setupModule = await import(module)
+
+  return setupModule.default.handler
+}
+
+/**
+ * Check if a user's project's package.json has a module listed as a dependency
+ * or devDependency. If not, check node_modules.
+ *
+ * @param {string} module
+ */
+function isInstalled(module) {
+  const { dependencies, devDependencies } = fs.readJSONSync(
+    path.join(getPaths().base, 'package.json'),
+  )
+
+  const deps = {
+    ...dependencies,
+    ...devDependencies,
+  }
+
+  if (deps[module]) {
+    return true
+  }
+
+  // Check any of the places require would look for this module.
+  // This enables testing auth setup packages with `yarn rwfw project:copy`.
+  //
+  // We can't use require.resolve here because it caches the exception
+  // Making it impossible to require when we actually do install it...
+  return require.resolve
+    .paths(`${module}/package.json`)
+    .some((requireResolvePath) => {
+      return fs.existsSync(path.join(requireResolvePath, module))
+    })
 }

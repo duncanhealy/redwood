@@ -1,22 +1,26 @@
-import { GraphQLError } from 'graphql'
+import React from 'react'
 
-interface ServerParseError extends Error {
+import type { GraphQLFormattedError } from 'graphql'
+
+export interface ServerParseError extends Error {
   response: Response
   statusCode: number
   bodyText: string
 }
 
-interface ServerError extends Error {
+export interface ServerError extends Error {
   response: Response
   statusCode: number
   result: Record<string, any>
 }
 
-interface RWGqlError {
+export interface RWGqlError {
   message: string
-  graphQLErrors: GraphQLError[]
+  graphQLErrors: readonly GraphQLFormattedError[]
   networkError: Error | ServerParseError | ServerError | null
 }
+
+export type RwGqlErrorProperties = Record<string, Record<string, string[]>>
 
 interface FormErrorProps {
   error?: RWGqlError
@@ -51,17 +55,30 @@ const FormError = ({
 
   let rootMessage = error.message
   const messages: string[] = []
-  const hasGraphQLError = !!error.graphQLErrors[0]
+  const hasGraphQLError = !!error.graphQLErrors?.[0]
   const hasNetworkError =
     !!error.networkError && Object.keys(error.networkError).length > 0
 
   if (hasGraphQLError) {
-    const errors = error.graphQLErrors[0].extensions?.exception.messages
-    rootMessage = error.graphQLErrors[0].message ?? 'Something went wrong.'
-    for (const e in errors) {
-      errors[e].forEach((fieldError: any) => {
-        messages.push(`${e} ${fieldError}`)
-      })
+    rootMessage = error.graphQLErrors[0].message ?? 'Something went wrong'
+
+    // override top-level message for ServiceValidation errorrs
+    if (error.graphQLErrors[0]?.extensions?.code === 'BAD_USER_INPUT') {
+      rootMessage = 'Errors prevented this form from being saved'
+    }
+
+    const properties = error.graphQLErrors[0].extensions?.[
+      'properties'
+    ] as RwGqlErrorProperties
+
+    const propertyMessages = properties?.['messages']
+
+    if (propertyMessages) {
+      for (const e in propertyMessages) {
+        propertyMessages[e].forEach((fieldError: any) => {
+          messages.push(fieldError)
+        })
+      }
     }
   } else if (hasNetworkError) {
     rootMessage = rootMessage ?? 'An error has occurred'

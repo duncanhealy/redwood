@@ -1,65 +1,63 @@
-import React, { useReducer, createContext, useContext } from 'react'
+import React, { createContext, useContext, useMemo } from 'react'
 
-import { useAuth } from '@redwoodjs/auth'
+import type { AuthContextInterface } from '@redwoodjs/auth' with { 'resolution-mode': 'import' }
+import { useNoAuth } from '@redwoodjs/auth'
 
-import type { ParamType } from 'src/internal'
-import { isRoute, PageType } from 'src/router'
-import { flattenAll } from 'src/util'
+import type { analyzeRoutes } from './analyzeRoutes.js'
+import type { ParamType } from './util.js'
 
-const DEFAULT_PAGE_LOADING_DELAY = 1000 // milliseconds
+type UseAuth = () => AuthContextInterface<
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  unknown
+>
 
 export interface RouterState {
   paramTypes?: Record<string, ParamType>
-  pageLoadingDelay?: number
-  useAuth: typeof useAuth
-  routes: Array<{ name?: string; path?: string; page?: PageType }>
+  useAuth: UseAuth
+  routes: ReturnType<typeof analyzeRoutes>
+  activeRouteName?: string | undefined | null
 }
 
 const RouterStateContext = createContext<RouterState | undefined>(undefined)
 
-export interface RouterSetContextProps {
-  setState: (newState: Partial<RouterState>) => void
-}
-
-const RouterSetContext = createContext<
-  React.Dispatch<Partial<RouterState>> | undefined
->(undefined)
-
 export interface RouterContextProviderProps
-  extends Omit<RouterState, 'useAuth' | 'routes'> {
-  useAuth?: typeof useAuth
-}
-
-function stateReducer(state: RouterState, newState: Partial<RouterState>) {
-  return { ...state, ...newState }
+  extends Omit<RouterState, 'useAuth'> {
+  useAuth?: UseAuth
+  routes: ReturnType<typeof analyzeRoutes>
+  activeRouteName?: string | undefined | null
+  children: React.ReactNode
 }
 
 export const RouterContextProvider: React.FC<RouterContextProviderProps> = ({
-  useAuth: customUseAuth,
+  useAuth,
   paramTypes,
-  pageLoadingDelay = DEFAULT_PAGE_LOADING_DELAY,
+  routes,
+  activeRouteName,
   children,
 }) => {
-  // Create an internal representation of all the routes and paths.
-  const routes = flattenAll(children)
-    .filter(isRoute)
-    .map((route) => {
-      const { name, path, page } = route.props
-      return { name, path, page }
-    })
-
-  const [state, setState] = useReducer(stateReducer, {
-    useAuth: customUseAuth || useAuth,
-    paramTypes,
-    pageLoadingDelay,
-    routes,
-  })
+  const state = useMemo(
+    () => ({
+      useAuth: useAuth || useNoAuth,
+      paramTypes,
+      routes,
+      activeRouteName,
+    }),
+    [useAuth, paramTypes, routes, activeRouteName],
+  )
 
   return (
     <RouterStateContext.Provider value={state}>
-      <RouterSetContext.Provider value={setState}>
-        {children}
-      </RouterSetContext.Provider>
+      {children}
     </RouterStateContext.Provider>
   )
 }
@@ -69,19 +67,7 @@ export const useRouterState = () => {
 
   if (context === undefined) {
     throw new Error(
-      'useRouterState must be used within a RouterContextProvider'
-    )
-  }
-
-  return context
-}
-
-export const useRouterStateSetter = () => {
-  const context = useContext(RouterSetContext)
-
-  if (context === undefined) {
-    throw new Error(
-      'useRouterStateSetter must be used within a RouterContextProvider'
+      'useRouterState must be used within a RouterContextProvider',
     )
   }
 

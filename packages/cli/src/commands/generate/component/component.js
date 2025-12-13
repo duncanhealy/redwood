@@ -1,5 +1,4 @@
-import { transformTSToJS } from 'src/lib'
-
+import { transformTSToJS } from '../../../lib'
 import {
   templateForComponentFile,
   createYargsForComponentGeneration,
@@ -7,41 +6,38 @@ import {
 
 const REDWOOD_WEB_PATH_NAME = 'components'
 
-export const files = ({
-  name,
-  tests = true,
-  stories = true,
-  typescript = false,
-}) => {
-  const extension = typescript ? '.tsx' : '.js'
-  const componentFile = templateForComponentFile({
+export const files = async ({ name, typescript = false, ...options }) => {
+  const extension = typescript ? '.tsx' : '.jsx'
+  const componentFile = await templateForComponentFile({
     name,
     webPathSection: REDWOOD_WEB_PATH_NAME,
     extension,
     generator: 'component',
     templatePath: 'component.tsx.template',
   })
-  const testFile = templateForComponentFile({
+  const testFile = await templateForComponentFile({
     name,
     extension: `.test${extension}`,
     webPathSection: REDWOOD_WEB_PATH_NAME,
     generator: 'component',
     templatePath: 'test.tsx.template',
   })
-  const storiesFile = templateForComponentFile({
+  const storiesFile = await templateForComponentFile({
     name,
     extension: `.stories${extension}`,
     webPathSection: REDWOOD_WEB_PATH_NAME,
     generator: 'component',
-    templatePath: 'stories.tsx.template',
+    // Using two different template files here because we have a TS-specific
+    // information in a comment in the .tsx template
+    templatePath: typescript ? 'stories.tsx.template' : 'stories.jsx.template',
   })
 
   const files = [componentFile]
-  if (stories) {
+  if (options.stories) {
     files.push(storiesFile)
   }
 
-  if (tests) {
+  if (options.tests) {
     files.push(testFile)
   }
 
@@ -50,14 +46,18 @@ export const files = ({
   //    "path/to/fileA": "<<<template>>>",
   //    "path/to/fileB": "<<<template>>>",
   // }
-  return files.reduce((acc, [outputPath, content]) => {
-    const template = typescript ? content : transformTSToJS(outputPath, content)
+  return files.reduce(async (accP, [outputPath, content]) => {
+    const acc = await accP
+
+    const template = typescript
+      ? content
+      : await transformTSToJS(outputPath, content)
 
     return {
       [outputPath]: template,
       ...acc,
     }
-  }, {})
+  }, Promise.resolve({}))
 }
 
 export const description = 'Generate a component'

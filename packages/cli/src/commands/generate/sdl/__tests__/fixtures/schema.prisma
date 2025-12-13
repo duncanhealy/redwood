@@ -1,4 +1,4 @@
-datasource DS {
+datasource db {
   provider = "mysql"
   url      = env("DB_HOST")
 }
@@ -36,19 +36,48 @@ model UserProfile {
   user     User   @relation(fields: [userId], references: [id])
 }
 
+/// A shoe worn by a user.
 model Shoe {
+  /// The underlying ID
   id    Int   @id @default(autoincrement())
+  /// Shoe color
   color Color
 }
 
+/// A photograph taken by a user.
 model Photo {
+  /// The underlying ID
   id       Int    @id @default(autoincrement())
+  /// The name of the Photo
   name     String
   metadata Json
 }
 
+model Key {
+  id        Int   @id @default(autoincrement())
+  publicKey Bytes
+}
+
+/// A list of allowed colors.
 enum Color {
   RED
   GREEN
   BLUE
+}
+
+model CustomData {
+  id   Int    @id @default(autoincrement())
+  data String
+}
+
+// This would be seeded with available car brands
+model CarBrand {
+  brand String @id
+  cars  Car[]
+}
+
+model Car {
+  id       Int      @id @default(autoincrement())
+  brand    String
+  carBrand CarBrand @relation(fields: [brand], references: [brand])
 }

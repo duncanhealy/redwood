@@ -4,19 +4,17 @@ import { DiagnosticSeverity } from 'vscode-languageserver-types'
 import { BaseNode } from '../ide'
 import { iter } from '../x/Array'
 import { lazy } from '../x/decorators'
-import {
-  ExtendedDiagnostic,
-  Location_fromNode,
-} from '../x/vscode-languageserver-types'
+import type { ExtendedDiagnostic } from '../x/vscode-languageserver-types'
+import { Location_fromNode } from '../x/vscode-languageserver-types'
 
-import { RWSDLField } from './RWSDLField'
-import { RWService } from './RWService'
+import type { RWSDLField } from './RWSDLField'
+import type { RWService } from './RWService'
 
 export class RWServiceFunction extends BaseNode {
   constructor(
     public name: string,
     public node: tsm.FunctionDeclaration | tsm.ArrowFunction,
-    public parent: RWService
+    public parent: RWService,
   ) {
     super()
   }
@@ -33,11 +31,12 @@ export class RWServiceFunction extends BaseNode {
 
   @lazy() get sdlField(): RWSDLField | undefined {
     return this.parent.sdl?.implementableFields?.find(
-      (f) => f.name === this.name
+      (f) => f.name === this.name,
     )
   }
 
   @lazy() get parameterNames() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this
     return iter(function* () {
       for (const p of self.node.getParameters()) {
@@ -78,13 +77,18 @@ export class RWServiceFunction extends BaseNode {
           },
         } as ExtendedDiagnostic
         // comment out for now (see https://github.com/redwoodjs/redwood/issues/943)
-        if (false) yield diagnostic // eslint-disable-line
+
+        // comment out for now (see https://github.com/redwoodjs/redwood/issues/943)
+        // eslint-disable-next-line no-constant-condition
+        if (false) {
+          yield diagnostic
+        }
       }
 
       // TODO: check that types match
       // to do this it is probably easier to leverage a graphql code generator and the typescript compiler
       // the trick is to create a source file with an interface assignment that will fail if there is a mismatch
-      // we then simpy "bubble up" the type errors from the typescript compiler
+      // we then simply "bubble up" the type errors from the typescript compiler
     }
   }
 }

@@ -1,8 +1,0 @@
-{
-  "ignoreTestFiles": ["**/codemods/*.js"],
-  "projectId": "ao5sqb",
-  "retries": {
-    "runMode": 2,
-    "openMode": 0
-  }
-}

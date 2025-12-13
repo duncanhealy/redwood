@@ -31,7 +31,7 @@ const createSignature = ({
       : undefined
 
     return jwt.sign(payload, secret, { ...signOptions })
-  } catch (error) {
+  } catch (error: any) {
     throw new WebhookSignError(error.message)
   }
 }
@@ -67,24 +67,20 @@ export const verifySignature = ({
     }
 
     return true
-
-    throw new WebhookVerificationError()
-  } catch (error) {
+  } catch {
     throw new WebhookVerificationError()
   }
 }
 
 /**
  *
- * JWT Payload Verfifier
+ * JWT Payload Verifier
  *
  * Based on Netlify's webhook payload verification
  * @see: https://docs.netlify.com/site-deploys/notifications/#payload-signature
  *
  */
-export const jwtVerifier = (
-  options?: VerifyOptions | undefined
-): JwtVerifier => {
+export const jwtVerifier = (options?: VerifyOptions): JwtVerifier => {
   return {
     sign: ({ payload, secret }) => {
       return createSignature({ payload, secret, options })

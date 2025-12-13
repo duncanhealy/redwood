@@ -1,13 +1,15 @@
-global.__dirname = __dirname
-jest.mock('fs')
-jest.mock('src/lib', () => {
+globalThis.__dirname = __dirname
+
+vi.mock('fs-extra')
+vi.mock('../../../../lib', async (importOriginal) => {
+  const originalLib = await importOriginal()
   return {
-    ...jest.requireActual('src/lib'),
+    ...originalLib,
     generateTemplate: () => '',
   }
 })
 
-jest.mock('@redwoodjs/structure', () => {
+vi.mock('@redwoodjs/structure', () => {
   return {
     getProject: () => ({
       cells: [{ queryOperationName: undefined }],
@@ -15,30 +17,60 @@ jest.mock('@redwoodjs/structure', () => {
   }
 })
 
-import fs from 'fs'
+import fs from 'fs-extra'
+import { vol } from 'memfs'
+import { vi, beforeEach, afterEach, test, expect } from 'vitest'
 
-import 'src/lib/test'
+import '../../../../lib/test'
 
 import { files } from '../../../generate/cell/cell'
 import { tasks } from '../cell'
 
 beforeEach(() => {
-  fs.__setMockFiles(files({ name: 'User' }))
+  vi.spyOn(console, 'info').mockImplementation(() => {})
+  vi.spyOn(console, 'log').mockImplementation(() => {})
 })
 
 afterEach(() => {
-  fs.__setMockFiles({})
-  jest.spyOn(fs, 'unlinkSync').mockClear()
+  vol.reset()
+  console.info.mockRestore()
+  console.log.mockRestore()
 })
 
 test('destroys cell files', async () => {
-  const unlinkSpy = jest.spyOn(fs, 'unlinkSync')
-  const t = tasks({ componentName: 'cell', filesFn: files, name: 'User' })
-  t.setRenderer('silent')
-
-  return t.run().then(() => {
-    const generatedFiles = Object.keys(files({ name: 'User' }))
-    expect(generatedFiles.length).toEqual(unlinkSpy.mock.calls.length)
-    generatedFiles.forEach((f) => expect(unlinkSpy).toHaveBeenCalledWith(f))
+  vol.fromJSON(await files({ name: 'User' }))
+  const unlinkSpy = vi.spyOn(fs, 'unlinkSync')
+  const t = tasks({
+    componentName: 'cell',
+    filesFn: files,
+    name: 'User',
   })
+  t.options.renderer = 'silent'
+
+  await t.run()
+
+  const generatedFiles = Object.keys(await files({ name: 'User' }))
+  expect(generatedFiles.length).toEqual(unlinkSpy.mock.calls.length)
+  generatedFiles.forEach((f) => expect(unlinkSpy).toHaveBeenCalledWith(f))
+})
+
+test('destroys cell files with stories and tests', async () => {
+  vol.fromJSON(await files({ name: 'User', stories: true, tests: true }))
+  const unlinkSpy = vi.spyOn(fs, 'unlinkSync')
+  const t = tasks({
+    componentName: 'cell',
+    filesFn: files,
+    name: 'User',
+    stories: true,
+    tests: true,
+  })
+  t.options.renderer = 'silent'
+
+  await t.run()
+
+  const generatedFiles = Object.keys(
+    await files({ name: 'User', stories: true, tests: true }),
+  )
+  expect(generatedFiles.length).toEqual(unlinkSpy.mock.calls.length)
+  generatedFiles.forEach((f) => expect(unlinkSpy).toHaveBeenCalledWith(f))
 })

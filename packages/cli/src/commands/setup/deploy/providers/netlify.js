@@ -1,30 +1,49 @@
+// import terminalLink from 'terminal-link'
 import path from 'path'
 
-import { getPaths } from 'src/lib'
+import { Listr } from 'listr2'
 
-const NETLIFY_TOML = `[build]
-command = "yarn rw deploy netlify"
-publish = "web/dist"
-functions = "api/dist/functions"
+import { recordTelemetryAttributes } from '@redwoodjs/cli-helpers'
+import { errorTelemetry } from '@redwoodjs/telemetry'
 
-[dev]
-  command = "yarn rw dev"
+import { getPaths, printSetupNotes } from '../../../../lib'
+import c from '../../../../lib/colors'
+import { addFilesTask, updateApiURLTask } from '../helpers'
+import { NETLIFY_TOML } from '../templates/netlify'
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-`
+export const command = 'netlify'
+export const description = 'Setup Netlify deploy'
 
-// any files to create
-export const files = [
-  { path: path.join(getPaths().base, 'netlify.toml'), content: NETLIFY_TOML },
+const files = [
+  {
+    path: path.join(getPaths().base, 'netlify.toml'),
+    content: NETLIFY_TOML,
+  },
 ]
 
-export const apiProxyPath = '/.netlify/functions'
-
-// any notes to print out when the job is done
-export const notes = [
+const notes = [
   'You are ready to deploy to Netlify!',
-  'See: https://redwoodjs.com/docs/deploy#netlify-deploy',
+  'See: https://redwoodjs.com/docs/deploy/netlify',
 ]
+
+export const handler = async ({ force }) => {
+  recordTelemetryAttributes({
+    command: 'setup deploy netlify',
+    force,
+  })
+  const tasks = new Listr(
+    [
+      updateApiURLTask('/.netlify/functions'),
+      addFilesTask({ files, force }),
+      printSetupNotes(notes),
+    ],
+    { rendererOptions: { collapseSubtasks: false } },
+  )
+  try {
+    await tasks.run()
+  } catch (e) {
+    errorTelemetry(process.argv, e.message)
+    console.error(c.error(e.message))
+    process.exit(e?.exitCode || 1)
+  }
+}
